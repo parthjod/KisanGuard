@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.get("/alerts", response_model=AlertHistoryResponse)
 async def get_alert_history(
-    user_id: str = Query(..., description="User identifier"),
+    user_id: str | None = Query(None, description="User identifier"),
     from_date: str | None = Query(None, alias="from", description="Start date YYYY-MM-DD"),
     to_date: str | None = Query(None, alias="to", description="End date YYYY-MM-DD"),
     severity: str | None = Query(None, description="Filter: RED | CAUTION | SAFE"),
@@ -43,7 +43,7 @@ async def get_alert_history(
         items = await dynamo.query_by_pk(
             settings.DYNAMO_ALERTS_TABLE,
             pk_name="user_id",
-            pk_val=user_id,
+            pk_val=user_id or user.get("user_id", "usr_demo_farmer"),
             index_name="user_id-timestamp-index",
         )
         for it in items:

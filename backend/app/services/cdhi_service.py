@@ -73,10 +73,14 @@ class CDHIService:
 
         # Fetch environmental data from DynamoDB
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        env_data = await dynamo.get_item(
-            settings.DYNAMO_FEATURES_TABLE,
-            {"PK": state_name, "SK": today},
-        )
+        env_data = None
+        try:
+            env_data = await dynamo.get_item(
+                settings.DYNAMO_FEATURES_TABLE,
+                {"ward_id": state_name, "timestamp": today},
+            )
+        except Exception as e:
+            logger.warning("dynamo_env_fetch_failed: %s", str(e))
         if not env_data:
             env_data = self._default_env(state_name)
 
@@ -161,7 +165,7 @@ class CDHIService:
             },
             "forecast_14d": forecast_14d,
             "advisory": {
-                "text": "",  # filled by bedrock_service
+                "text": await self._generate_advisory_text(cdhi_score, cdhi_category, crop, stage, lang, plot_id),
                 "language": lang,
                 "action": self._recommend_action(cdhi_category, crop, stage),
             },
@@ -266,3 +270,28 @@ class CDHIService:
         elif category == "CAUTION":
             return "MONITOR_AND_PREPARE"
         return None
+
+    async def _generate_advisory_text(
+        self,
+        cdhi_score: float,
+        category: str,
+        crop: str,
+        stage: str,
+        lang: str,
+        plot_id: str,
+    ) -> str:
+        """Call Amazon Bedrock to generate localized advisory text for CDHI."""
+        try:
+            from app.services.bedrock_service import bedrock_service
+            return await bedrock_service.generate_advisory(
+                feature_name="CDHI",
+                value=cdhi_score,
+                severity=category,
+                crop=crop,
+                stage=stage,
+                lang=lang,
+                ward_id=plot_id,
+            )
+        except Exception as e:
+            logger.warning("bedrock_cdhi_advisory_failed: %s", str(e))
+            return f"फसल ({crop}): सूखा एवं ताप तनाव ({category})। नमी बनाए रखने के लिए शाम को हल्की सिंचाई करें।"

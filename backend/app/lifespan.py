@@ -43,9 +43,9 @@ async def _warmup_models(state: Any) -> None:
             from app.ml.model1_wbgt.ensemble import ensemble_predict
             dummy_feats = {col: 25.0 for col in state.model1.feature_cols}
             wbgt, conf = ensemble_predict(state.model1, dummy_feats)
-            logger.info("model1_warmup_ok", wbgt=wbgt, conf=conf)
+            logger.info("model1_warmup_ok: wbgt=%s, conf=%s", wbgt, conf)
     except Exception as e:
-        logger.warning("model1_warmup_failed", error=str(e))
+        logger.warning("model1_warmup_failed: %s", str(e))
 
     # Warmup Model 2
     try:
@@ -55,9 +55,9 @@ async def _warmup_models(state: Any) -> None:
             dummy_vec = np.zeros((1, len(state.model2.feature_cols)))
             prob = run_classifier(state.model2.classifier, dummy_vec)
             loss = run_regressor(state.model2.regressor, dummy_vec)
-            logger.info("model2_warmup_ok", prob=prob, loss=loss)
+            logger.info("model2_warmup_ok: prob=%s, loss=%s", prob, loss)
     except Exception as e:
-        logger.warning("model2_warmup_failed", error=str(e))
+        logger.warning("model2_warmup_failed: %s", str(e))
 
     # Warmup Model 3
     try:
@@ -67,9 +67,9 @@ async def _warmup_models(state: Any) -> None:
             default_m = state.model3.models.get("default")
             dummy_obs = np.zeros(state.model3.obs_dim)
             act_idx, act_mm = run_ppo_inference(default_m, dummy_obs, state.model3.action_depths_mm)
-            logger.info("model3_warmup_ok", act_idx=act_idx, act_mm=act_mm)
+            logger.info("model3_warmup_ok: act_idx=%s, act_mm=%s", act_idx, act_mm)
     except Exception as e:
-        logger.warning("model3_warmup_failed", error=str(e))
+        logger.warning("model3_warmup_failed: %s", str(e))
 
     logger.info("warming_up_models_complete")
 
@@ -80,29 +80,29 @@ async def lifespan(app: FastAPI):
     FastAPI lifespan manager.
     Preloads all 3 models and static geographic data at startup.
     """
-    logger.info("kisanguard_startup_commencing", version=settings.APP_VERSION)
+    logger.info("kisanguard_startup_commencing version=%s", settings.APP_VERSION)
     models_dir = _find_models_dir()
-    logger.info("models_directory_located", path=str(models_dir))
+    logger.info("models_directory_located path=%s", str(models_dir))
 
     # 1. Load Ward Geodata into in-memory LRU
     try:
         load_ward_data()
         logger.info("ward_geodata_loaded")
     except Exception as e:
-        logger.warning("ward_geodata_load_failed", error=str(e))
+        logger.warning("ward_geodata_load_failed: %s", str(e))
 
     # 2. Model 1: WBGT (XGBoost + LSTM)
     try:
         m1_dir = models_dir / "model1_wbgt" / "artifacts"
         app.state.model1 = await load_wbgt_model(
-            xgb_path=str(m1_dir / "xgbt_xgb.json"),
+            xgb_path=str(m1_dir / "wbgt_xgb.json"),
             lstm_path=str(m1_dir / "wbgt_lstm.keras"),
             preprocessor_path=str(m1_dir / "wbgt_preprocessor.pkl"),
             feature_cols_path=str(m1_dir / "wbgt_feature_cols.json"),
         )
         logger.info("model1_wbgt_loaded")
     except Exception as e:
-        logger.error("model1_wbgt_load_failed", error=str(e))
+        logger.error("model1_wbgt_load_failed: %s", str(e))
         app.state.model1 = None
 
     # 3. Model 2: CDHI / CSYR (Calibrated Classifier + Regressor)
@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
         )
         logger.info("model2_cdhi_loaded")
     except Exception as e:
-        logger.error("model2_cdhi_load_failed", error=str(e))
+        logger.error("model2_cdhi_load_failed: %s", str(e))
         app.state.model2 = None
 
     # 4. Model 3: PPO Irrigation Variants
@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
         IrrigationService._bundle = app.state.model3
         logger.info("model3_irrigation_loaded")
     except Exception as e:
-        logger.error("model3_irrigation_load_failed", error=str(e))
+        logger.error("model3_irrigation_load_failed: %s", str(e))
         app.state.model3 = None
 
     # 5. Sanity Warmup

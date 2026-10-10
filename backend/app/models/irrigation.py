@@ -34,6 +34,8 @@ class RLState(BaseModel):
 
 
 class IrrigationResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     plot_id: str
     computed_at: str
     model_used: str
@@ -42,6 +44,9 @@ class IrrigationResponse(BaseModel):
     mad_framework: MADFramework
     rl_state: RLState
     advisory: str
+
+
+IrrigationRecommendationResponse = IrrigationResponse
 
 
 class IrrigationActionRequest(BaseModel):

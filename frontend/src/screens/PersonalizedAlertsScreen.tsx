@@ -129,9 +129,13 @@ export default function PersonalizedAlertsScreen() {
         role: `${safeCrops.map((c) => c.charAt(0).toUpperCase() + c.slice(1)).join(" & ")} Farmer`,
         village: user.village || user.district,
         district: user.district,
+        state: user.state,
         crop: (safeCrops[0] as CropId) || "wheat",
+        crops: safeCrops,
+        soilType: user.soilType,
+        irrigationMethod: user.irrigationMethod,
         stage: "flowering",
-        hectares: user.state === "Punjab" ? 5.5 : user.state === "Rajasthan" ? 6.0 : 3.8,
+        hectares: user.acres ? user.acres * 0.404686 : 3.8,
         avatarInitials: initials,
       }
     }
@@ -349,6 +353,16 @@ export default function PersonalizedAlertsScreen() {
               <div className="flex justify-between">
                 <span>Advisory Language:</span>
                 <strong>{LANGUAGES.find((l) => l.code === preferences.language)?.native || preferences.language}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span>Soil &amp; Irrigation:</span>
+                <strong className="capitalize">
+                  {activeSubscriber.soilType || (activeSubscriber.district.toLowerCase().includes("ludhiana") ? "Alluvial Loam" : activeSubscriber.district.toLowerCase().includes("jodhpur") ? "Sandy Loam" : activeSubscriber.district.toLowerCase().includes("warangal") ? "Red Loam" : "Black Vertisol")} · {activeSubscriber.irrigationMethod || "Drip"}
+                </strong>
+              </div>
+              <div className="flex justify-between">
+                <span>Model Pipeline:</span>
+                <strong className="text-emerald-800 font-semibold">Bedrock (Claude) &rarr; Polly Neural</strong>
               </div>
               <div className="flex justify-between">
                 <span>Primary Channel:</span>

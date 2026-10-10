@@ -78,6 +78,8 @@ class BedrockService:
         language: str = "hi",
         channel: str = "VOICE",
         action: str | None = None,
+        soil_type: str | None = None,
+        irrigation_method: str | None = None,
     ) -> str:
         """
         Calls Amazon Bedrock Claude Sonnet to generate concise localized advisory.
@@ -96,30 +98,29 @@ class BedrockService:
                 f"WBGT Temperature: {wbgt if wbgt is not None else 'N/A'} °C\n"
                 f"CDHI Score: {cdhi if cdhi is not None else 'N/A'}\n"
                 f"Crop: {crop or 'N/A'}, Stage: {stage or 'N/A'}\n"
+                f"Soil Type: {soil_type or 'N/A'}\n"
+                f"Irrigation Delivery Method: {irrigation_method or 'N/A'}\n"
                 f"Suggested Action: {action or 'rest and hydrate'}\n"
             )
 
-            body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": settings.BEDROCK_MAX_TOKENS,
-                "temperature": settings.BEDROCK_TEMPERATURE,
-                "system": SYSTEM_PROMPT,
-                "messages": [
-                    {"role": "user", "content": prompt_content}
-                ],
-            }
-
             async with self._session.client("bedrock-runtime", region_name=settings.AWS_REGION) as client:
-                response = await client.invoke_model(
+                response = await client.converse(
                     modelId=settings.BEDROCK_MODEL_ID,
-                    body=json.dumps(body),
-                    contentType="application/json",
-                    accept="application/json",
+                    system=[{"text": SYSTEM_PROMPT}],
+                    messages=[
+                        {"role": "user", "content": [{"text": prompt_content}]}
+                    ],
+                    inferenceConfig={
+                        "maxTokens": settings.BEDROCK_MAX_TOKENS,
+                        "temperature": settings.BEDROCK_TEMPERATURE,
+                    },
                 )
-                response_body = json.loads(await response["body"].read())
-                text = response_body.get("content", [{}])[0].get("text", "").strip()
-                if text:
-                    return text
+                output_msg = response.get("output", {}).get("message", {})
+                content_list = output_msg.get("content", [])
+                if content_list and "text" in content_list[0]:
+                    text = content_list[0]["text"].strip()
+                    if text:
+                        return text
 
         except Exception as e:
             logger.info("bedrock_fallback_used", reason=str(e), lang=lang, severity=severity_norm)

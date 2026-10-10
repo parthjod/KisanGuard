@@ -265,7 +265,11 @@ export interface Persona {
   role: string
   village: string
   district: string
+  state?: string
   crop: CropId
+  crops?: string[]
+  soilType?: string
+  irrigationMethod?: string
   stage: CropStage
   hectares: number
   avatarInitials: string

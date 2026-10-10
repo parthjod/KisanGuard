@@ -61,6 +61,11 @@ TRANSLATE_CODES: dict[str, str] = {
 }
 
 
+def is_polly_supported(lang: str) -> bool:
+    """Whether this language has native Polly voice support."""
+    return lang in POLLY_NATIVE_VOICES
+
+
 def get_polly_voice(lang: str) -> str | None:
     """Return native Polly voice name, or None if translate is needed."""
     return POLLY_NATIVE_VOICES.get(lang)

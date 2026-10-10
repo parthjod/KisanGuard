@@ -4,6 +4,26 @@ from __future__ import annotations
 
 import numpy as np
 
+STAGE_ENCODINGS: dict[str, int] = {
+    "initial": 0,
+    "vegetative": 1,
+    "development": 1,
+    "flowering": 2,
+    "reproductive": 2,
+    "mid-season": 2,
+    "late": 3,
+    "late-season": 3,
+    "maturity": 3,
+    "harvest": 3,
+}
+
+
+def encode_crop_stage(stage: str | None) -> int:
+    """Encode crop stage name string to integer 0-3."""
+    if not stage:
+        return 0
+    return STAGE_ENCODINGS.get(str(stage).lower().strip(), 0)
+
 
 def build_rl_state(
     soil_moisture_pct: float,

@@ -48,3 +48,8 @@ class WebhookResponse(BaseModel):
     webhook_id: str
     status: str = "ACCEPTED"
     queued_at: datetime
+
+
+# Aliases for webhook routes
+WebhookAlertRequest = WebhookRequest
+WebhookAlertResponse = WebhookResponse

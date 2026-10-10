@@ -132,6 +132,8 @@ class AlertService:
             language=lang,
             channel=primary_channel,
             action=alert_payload.get("recommended_action"),
+            soil_type=user.get("soil_type"),
+            irrigation_method=user.get("irrigation_method"),
         )
 
         # 5. Dispatch Alert

@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 import logging
+
+# Structlog-style kwargs compatibility for standard logging
+_orig_logger_log = logging.Logger._log
+logging.Logger._log = lambda self, level, msg, args, exc_info=None, extra=None, stack_info=False, stacklevel=1, **kwargs: _orig_logger_log(
+    self, level, msg, args, exc_info=exc_info, extra={**(extra or {}), **kwargs}, stack_info=stack_info, stacklevel=stacklevel
+)
+
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, status
@@ -68,7 +75,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     req_id = getattr(request.state, "correlation_id", "unknown")
-    logger.exception("unhandled_server_error", exc_info=exc, request_id=req_id)
+    logger.exception("unhandled_server_error", exc_info=exc, extra={"request_id": req_id})
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

@@ -42,6 +42,10 @@ class AuditRecord(BaseModel):
     delivery: AuditDelivery | None = None
 
 
+# Alias for response schema
+AuditRecordResponse = AuditRecord
+
+
 class AuditExportResponse(BaseModel):
     export_id: str
     org_id: str

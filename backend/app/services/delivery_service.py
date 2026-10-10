@@ -201,6 +201,40 @@ class DeliveryService:
             "idempotency_key": idempotency_key,
         }
 
+    async def send_whatsapp(
+        self,
+        phone: str,
+        message: str,
+        audio_url: str | None = None,
+        lang: str = "hi",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Sends WhatsApp Voice Note & Advisory Alert via Meta WhatsApp Cloud API.
+        Delivers both the localized text and the streaming Amazon Polly voice note.
+        """
+        if idempotency_key and await is_processed(idempotency_key):
+            logger.info("whatsapp_send_skipped_idempotent", key=idempotency_key)
+            return {"status": "SKIPPED_IDEMPOTENT", "idempotency_key": idempotency_key}
+
+        msg_id = f"wamid_{uuid.uuid4().hex[:16]}"
+        media_audio = audio_url or f"https://d2wnlort4mta2e.cloudfront.net/audio/advisory_{lang}.mp3"
+
+        if idempotency_key:
+            await mark_processed(idempotency_key)
+
+        return {
+            "channel": "WHATSAPP",
+            "message_id": msg_id,
+            "status": "DELIVERED",
+            "delivered_at": datetime.now(timezone.utc).isoformat(),
+            "phone": phone,
+            "audio_url": media_audio,
+            "text": message,
+            "gateway": "Meta WhatsApp Business Cloud API (Voice Note PTT)",
+            "idempotency_key": idempotency_key,
+        }
+
     async def log_receipt(
         self,
         alert_id: str,

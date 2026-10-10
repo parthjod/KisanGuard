@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import alerts, audit, cdhi, health, irrigation, org, users, wbgt, webhook
+from app.api.v1 import alerts, audit, cdhi, frontend_adapter, health, irrigation, org, users, wbgt, webhook
 
 api_router = APIRouter()
 
+api_router.include_router(frontend_adapter.router, tags=["Frontend Adapter"])
 api_router.include_router(wbgt.router, tags=["WBGT"])
 api_router.include_router(cdhi.router, tags=["CDHI & CSYR"])
 api_router.include_router(irrigation.router, tags=["Irrigation"])

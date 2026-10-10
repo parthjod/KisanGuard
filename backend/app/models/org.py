@@ -46,3 +46,13 @@ class OrgDashboardResponse(BaseModel):
     wards: list[WardStatus]
     compliance: ComplianceStats
     esg_summary: ESGSummary
+
+
+class OrgReportResponse(BaseModel):
+    org_id: str
+    period: dict[str, Any]
+    total_records: int
+    esg_metrics: dict[str, Any]
+    export_id: str
+    download_url: str
+    generated_at: str

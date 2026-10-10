@@ -32,6 +32,7 @@ export default function AuthModal() {
   const [crop, setCrop] = useState("wheat")
   const [acres, setAcres] = useState("4.0")
   const [irrigation, setIrrigation] = useState("Drip")
+  const [soilType, setSoilType] = useState("medium-black")
   const [lang, setLang] = useState("hi")
   const [resolvingPin, setResolvingPin] = useState(false)
   const [resolvedNote, setResolvedNote] = useState<string | null>(null)
@@ -50,6 +51,16 @@ export default function AuthModal() {
           setDistrict(res.district)
           if (res.postOffices?.[0]) {
             setVillage(res.postOffices[0].name)
+          }
+          const sLower = res.state.toLowerCase()
+          if (sLower.includes("punjab") || sLower.includes("haryana") || sLower.includes("uttar")) {
+            setSoilType("alluvial")
+          } else if (sLower.includes("rajasthan")) {
+            setSoilType("sandy")
+          } else if (sLower.includes("telangana") || sLower.includes("andhra") || sLower.includes("tamil") || sLower.includes("karnataka")) {
+            setSoilType("red")
+          } else {
+            setSoilType("medium-black")
           }
           setResolvedNote(`✓ Auto-detected: ${res.district}, ${res.state}`)
         }
@@ -76,7 +87,7 @@ export default function AuthModal() {
         lat: farmer.lat,
         lng: farmer.lng,
         acres: farmer.acres || 4.0,
-        soilType: farmer.state === "Punjab" ? "alluvial" : "medium-black",
+        soilType: (farmer.soilType as any) || (farmer.state === "Punjab" ? "alluvial" : "medium-black"),
       })
     } else {
       const match = LOCATIONS.find(
@@ -102,6 +113,7 @@ export default function AuthModal() {
       village: village.trim() || district.trim(),
       pincode: pincode.trim(),
       acres: parseFloat(acres) || 4.0,
+      soilType: soilType,
       irrigationMethod: irrigation,
       preferredLanguage: lang,
       crops: [crop],
@@ -120,7 +132,7 @@ export default function AuthModal() {
       lat: state === "Punjab" ? 30.7 : state === "Rajasthan" ? 26.3 : state === "Telangana" ? 17.9 : 19.9,
       lng: state === "Punjab" ? 76.2 : state === "Rajasthan" ? 73.0 : state === "Telangana" ? 79.5 : 73.8,
       acres: newUser.acres || 4.0,
-      soilType: "medium-black",
+      soilType: soilType as any,
     })
 
     closeAuthModal()
@@ -406,7 +418,7 @@ export default function AuthModal() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label className="block text-xs font-bold text-stone-700 mb-1">
                     Irrigation Delivery Method
@@ -424,19 +436,35 @@ export default function AuthModal() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-stone-700 mb-1">
-                    Advisory Language
+                    Soil Classification
+                  </label>
+                  <select
+                    value={soilType}
+                    onChange={(e) => setSoilType(e.target.value)}
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#2e7d32]"
+                  >
+                    <option value="alluvial">Indo-Gangetic Alluvial Loam</option>
+                    <option value="medium-black">Deep Black Vertisol (Heavy Clay)</option>
+                    <option value="sandy">Arid / Sandy Loam (High Drainage)</option>
+                    <option value="red">Red Sandy Loam (Moderate Retention)</option>
+                    <option value="clay">Clayey Loam</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    Advisory Language &amp; Polly Voice
                   </label>
                   <select
                     value={lang}
                     onChange={(e) => setLang(e.target.value)}
                     className="w-full text-xs px-3 py-2 rounded-lg border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#2e7d32]"
                   >
-                    <option value="hi">हिन्दी (Hindi)</option>
-                    <option value="pa">ਪੰਜਾਬੀ (Punjabi)</option>
-                    <option value="mr">मराठी (Marathi)</option>
-                    <option value="te">తెలుగు (Telugu)</option>
-                    <option value="bn">বাংলা (Bengali)</option>
-                    <option value="en">English</option>
+                    <option value="hi">हिन्दी (Aditi - Neural)</option>
+                    <option value="pa">ਪੰਜਾਬੀ (Gurpreet - Neural)</option>
+                    <option value="mr">मराठी (Aarohi - Neural)</option>
+                    <option value="te">తెలుగు (Chitra - Neural)</option>
+                    <option value="bn">বাংলা (Bengali Neural)</option>
+                    <option value="en">English (Kajal - Neural)</option>
                   </select>
                 </div>
               </div>

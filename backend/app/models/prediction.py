@@ -36,6 +36,8 @@ class WBGTDailySummary(BaseModel):
 
 
 class WBGTResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     ward_id: str
     district: str
     state: str
@@ -48,6 +50,9 @@ class WBGTResponse(BaseModel):
     a2i_decision: str | None = None
     hourly: list[WBGTHourly]
     daily_summary: WBGTDailySummary
+
+
+HourlyWBGTResponse = WBGTResponse
 
 
 # ── CDHI (Feature 2) ────────────────────────────────────────────────────
@@ -99,6 +104,8 @@ class CDHIAdvisory(BaseModel):
 
 
 class CDHIResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     plot_id: str
     state: str
     crop: str

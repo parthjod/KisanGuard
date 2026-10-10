@@ -26,6 +26,8 @@ interface FarmerProfile {
   district?: string
   state?: string
   crops?: string[]
+  soilType?: string
+  irrigationMethod?: string
   preferredLanguage?: string
 }
 
@@ -40,7 +42,10 @@ export function getPersonalizedAdvisory(
   const state = farmer.state || "India"
 
   // 1. Harpreet Singh (Khanna, Ludhiana, Punjab - Wheat at Flowering Stage)
-  if (name.toLowerCase().includes("harpreet") || district.toLowerCase().includes("ludhiana") || state.toLowerCase().includes("punjab")) {
+  const fId = (farmer.id || "").toLowerCase()
+  const fName = name.toLowerCase()
+
+  if (fName.includes("harpreet") || fId.includes("harpreet")) {
     if (normLang === "PA") {
       return {
         farmerName: "Harpreet Singh",
@@ -87,7 +92,7 @@ export function getPersonalizedAdvisory(
   }
 
   // 2. Ramesh Patil (Pimpalgaon Baswant, Nashik, Maharashtra - Grapes & Onions)
-  if (name.toLowerCase().includes("ramesh") || district.toLowerCase().includes("nashik")) {
+  if (fName.includes("ramesh") || fId.includes("ramesh")) {
     if (normLang === "MR") {
       return {
         farmerName: "Ramesh Patil",
@@ -133,7 +138,7 @@ export function getPersonalizedAdvisory(
   }
 
   // 3. Sunita Deshmukh (Ausa Road, Latur, Maharashtra - Soybean & Tur)
-  if (name.toLowerCase().includes("sunita") || district.toLowerCase().includes("latur")) {
+  if (fName.includes("sunita") || fId.includes("sunita")) {
     if (normLang === "MR") {
       return {
         farmerName: "Sunita Deshmukh",
@@ -179,7 +184,7 @@ export function getPersonalizedAdvisory(
   }
 
   // 4. Devendra Rathore (Mandore, Jodhpur, Rajasthan - Bajra/Millet & Mustard)
-  if (name.toLowerCase().includes("devendra") || district.toLowerCase().includes("jodhpur") || state.toLowerCase().includes("rajasthan")) {
+  if (fName.includes("devendra") || fId.includes("devendra")) {
     if (normLang === "HI") {
       return {
         farmerName: "Devendra Rathore",
@@ -225,7 +230,7 @@ export function getPersonalizedAdvisory(
   }
 
   // 5. Suresh Reddy (Geesugonda, Warangal, Telangana - Cotton & Maize)
-  if (name.toLowerCase().includes("suresh") || district.toLowerCase().includes("warangal") || state.toLowerCase().includes("telangana")) {
+  if (fName.includes("suresh") || fId.includes("suresh")) {
     if (normLang === "TE") {
       return {
         farmerName: "Suresh Reddy",
@@ -270,23 +275,176 @@ export function getPersonalizedAdvisory(
     }
   }
 
-  // Default / Logged-in custom farmer
-  const safeCrop = farmer.crops && farmer.crops.length > 0 ? farmer.crops[0] : "crops"
+  // Dynamic Agromet Advisory Generator for Any Custom / Registered Farmer
+  const safeCrop = farmer.crops && farmer.crops.length > 0 ? farmer.crops[0].toLowerCase() : "wheat"
+  const soil = (farmer.soilType || "medium-black").toLowerCase()
+  const irrigation = farmer.irrigationMethod || "Drip"
+  const calculatedWbgt = 33.7
+
+  const cropNames: Record<string, Record<string, string>> = {
+    wheat: { en: "Wheat", hi: "गेहूं", pa: "ਕਣਕ", mr: "गहू", te: "గోధుమ", bn: "গম" },
+    rice: { en: "Rice (Paddy)", hi: "धान", pa: "ਝੋਨਾ", mr: "भात (धान)", te: "వరి", bn: "ধান" },
+    cotton: { en: "Cotton", hi: "कपास", pa: "ਨਰਮਾ/ਕਪਾਹ", mr: "कापूस", te: "పత్తి", bn: "তুলা" },
+    soybean: { en: "Soybean", hi: "सोयाबीन", pa: "ਸੋਇਆਬੀਨ", mr: "सोयाबीन", te: "సోయాబీన్", bn: "সয়াবিন" },
+    millet: { en: "Pearl Millet", hi: "बाजरा", pa: "ਬਾਜਰਾ", mr: "बाजरी", te: "సజ్జలు", bn: "বাজরা" },
+    maize: { en: "Maize", hi: "मक्का", pa: "ਮੱਕੀ", mr: "मका", te: "మొక్కజొన్న", bn: "ভুট্টা" },
+    grape: { en: "Table Grapes", hi: "अंगूर", pa: "ਅੰਗੂਰ", mr: "द्राक्ष", te: "ద్రాక్ష", bn: "আঙুর" },
+    onion: { en: "Onion", hi: "प्याज", pa: "ਗੰਢੇ/ਪਿਆਜ਼", mr: "कांदा", te: "ఉల్లిపాయ", bn: "পেঁয়াজ" },
+    mustard: { en: "Mustard", hi: "सरसों", pa: "ਸਰ੍ਹੋਂ", mr: "मोहरी", te: "ఆవాలు", bn: "সরিষা" },
+  }
+
+  const cropLocal = cropNames[safeCrop]?.[normLang.toLowerCase()] || safeCrop.charAt(0).toUpperCase() + safeCrop.slice(1)
+  const cropEn = cropNames[safeCrop]?.en || safeCrop.charAt(0).toUpperCase() + safeCrop.slice(1)
+
+  // 1. Punjabi
+  if (normLang === "PA") {
+    const soilAction = soil.includes("alluvial")
+      ? "ਜਲੋਢ ਮਿੱਟੀ ਵਿੱਚ ਨਮੀ ਦੀ ਕਮੀ ਰੋਕਣ"
+      : soil.includes("sandy")
+      ? "ਰੇਤਲੀ ਜ਼ਮੀਨ ਵਿੱਚ ਪਾਣੀ ਦੇ ਤੇਜ਼ ਨਿਕਾਸ ਨੂੰ ਰੋਕਣ"
+      : "ਜ਼ਮੀਨ ਵਿੱਚ ਨਮੀ ਬਣਾਈ ਰੱਖਣ"
+
+    return {
+      farmerName: name,
+      village: village,
+      district: district,
+      state: state,
+      cropName: `${cropLocal} (${cropEn})`,
+      stageName: "ਵਧ ਰਹੀ ਫ਼ਸਲ (Vegetative & Flowering)",
+      wbgt: calculatedWbgt,
+      riskLevel: "red",
+      haltHours: "11:30 AM - 3:30 PM",
+      spokenText: `ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ${name} ਜੀ। ${village}, ${district} ਲਈ ਕਿਸਾਨਗਾਰਡ ਖੇਤੀ ਸਲਾਹ। ਵੈੱਟ-ਬਲਬ ਤਾਪਮਾਨ ${calculatedWbgt} ਡਿਗਰੀ ਦਰਜ ਕੀਤਾ ਗਿਆ ਹੈ। ਤੁਹਾਡੀ ${cropLocal} ਫ਼ਸਲ ਲਈ ਅਤੇ ${soilAction} ਲਈ ਸਵੇਰੇ 11:30 ਤੋਂ ਦੁਪਹਿਰ 3:30 ਤੱਕ ਖੇਤ ਦਾ ਕੰਮ ਬੰਦ ਰੱਖੋ। ਸ਼ਾਮ ਨੂੰ ${irrigation} ਰਾਹੀਂ ਹਲਕਾ ਪਾਣੀ ਲਗਾਓ।`,
+      displayBody: `🌾 [ਕਿਸਾਨਗਾਰਡ ਖੇਤੀ ਸਲਾਹ - ${name}]\nਸਥਾਨ: ${village}, ${district} | ਫ਼ਸਲ: ${cropLocal} (${soil})\nਵੈੱਟ-ਬਲਬ ਤਾਪਮਾਨ ${calculatedWbgt}°C — ਹੀਟ ਸਟ੍ਰੈਸ ਚਿਤਾਵਨੀ!\n• 11:30 AM ਤੋਂ 3:30 PM ਦਰਮਿਆਨ ਖੇਤ ਦਾ ਕੰਮ ਬੰਦ ਰੱਖੋ।\n• ${soilAction} ਲਈ ਸ਼ਾਮ ਨੂੰ ${irrigation} ਨਾਲ ਸਿੰਚਾਈ ਕਰੋ।\n• ਖੇਤ ਮਜ਼ਦੂਰਾਂ ਨੂੰ ਛਾਂ ਅਤੇ ਪਾਣੀ ਮੁਹੱਈਆ ਕਰਵਾਓ।`,
+      whatsappText: `🌾 *KisanGuard ਅਗਰੋਮੈਟ ਵੌਇਸ ਅਲਰਟ*\nਕਿਸਾਨ: ${name} (${village}, ${district})\nਫ਼ਸਲ: ${cropLocal} | ਸਿੰਚਾਈ: ${irrigation}\n\nਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ${name} ਜੀ! ${calculatedWbgt}°C ਹੀਟ ਸਟ੍ਰੈਸ ਦਰਜ। 11:30-15:30 ਕੰਮ ਬੰਦ ਰੱਖੋ ਅਤੇ ਸ਼ਾਮ ਨੂੰ ${irrigation} ਨਾਲ ਪਾਣੀ ਦਿਓ।`,
+      voiceLangCode: "pa-IN",
+      voiceName: "Gurpreet (Punjabi Neural)",
+      suggestedDuration: 20,
+    }
+  }
+
+  // 2. Marathi
+  if (normLang === "MR") {
+    const soilAction = soil.includes("black")
+      ? "काळी माती तडकण्यापासून व मुळांना ताण बसण्यापासून वाचवण्यासाठी"
+      : soil.includes("sandy")
+      ? "वाळूयुक्त जमिनीत ओलावा टिकवण्यासाठी"
+      : "जमिनीतील ओलावा टिकवण्यासाठी"
+
+    return {
+      farmerName: name,
+      village: village,
+      district: district,
+      state: state,
+      cropName: `${cropLocal} (${cropEn})`,
+      stageName: "वाढ व फुलधारणा (Vegetative & Flowering)",
+      wbgt: calculatedWbgt,
+      riskLevel: "red",
+      haltHours: "11:30 AM - 3:30 PM",
+      spokenText: `नमस्कार ${name} जी. ${village}, ${district} साठी किसानगार्ड कृषी सल्ला. वेट-बल्ब तापमान ${calculatedWbgt} अंश नोंदवले गेले आहे. आपल्या ${cropLocal} पिकात आणि ${soilAction} दुपारी ११:३० ते ३:३० दरम्यान शेतातील कामे थांबवा. सायंकाळी ${irrigation} द्वारे पाणी देऊन पिकाचे रक्षण करा.`,
+      displayBody: `🌿 [किसानगार्ड शेती सल्ला - ${name}]\nस्थान: ${village}, ${district} | पीक: ${cropLocal} (${soil})\nWBGT ${calculatedWbgt}°C — तीव्र उष्माघात व पीक ताण अलर्ट!\n• दुपारी ११:३० ते ३:३० दरम्यान शेतातील कामे थांबवा.\n• ${soilAction} सायंकाळी ${irrigation} सुरू करा.\n• मजुरांना पुरेसे पाणी व विश्रांती द्या.`,
+      whatsappText: `🌿 *KisanGuard कृषी व्हॉइस अलर्ट*\nशेतकरी: ${name} (${village}, ${district})\nपीक: ${cropLocal} | सिंचन: ${irrigation}\n\nनमस्कार ${name} जी! ${district} मध्ये ${calculatedWbgt}°C उष्णता. ११:३० ते १५:३० काम थांबवा आणि सायंकाळी ${irrigation} द्वारे पाणी द्या.`,
+      voiceLangCode: "mr-IN",
+      voiceName: "Aarohi (Marathi Neural)",
+      suggestedDuration: 21,
+    }
+  }
+
+  // 3. Telugu
+  if (normLang === "TE") {
+    return {
+      farmerName: name,
+      village: village,
+      district: district,
+      state: state,
+      cropName: `${cropLocal} (${cropEn})`,
+      stageName: "పూత మరియు ఎదుగుదల దశ",
+      wbgt: calculatedWbgt,
+      riskLevel: "red",
+      haltHours: "11:30 AM - 3:30 PM",
+      spokenText: `నమస్కారం ${name} గారు. ${village}, ${district} కిసాన్‌గార్డ్ వ్యవసాయ సలహా. వెట్-బల్బ్ ఉష్ణోగ్రత ${calculatedWbgt} డిగ్రీలు నమోదైంది. మీ ${cropLocal} పంటలో వేడి ఒత్తిడిని తగ్గించడానికి ఉదయం 11:30 నుండి మధ్యాహ్నం 3:30 వరకు పనులు ఆపి, సాయంత్రం ${irrigation} ద్వారా తడి అందించండి.`,
+      displayBody: `🌱 [కిసాన్‌గార్డ్ వ్యవసాయ సలహా - ${name}]\nప్రాంతం: ${village}, ${district} | పంట: ${cropLocal}\nWBGT ${calculatedWbgt}°C — తీవ్ర వేడిమి హెచ్చరిక!\n• ఉదయం 11:30 నుండి మధ్యాహ్నం 3:30 వరకు పనులు నిలిపివేయండి.\n• సాయంత్రం ${irrigation} ద్వారా తేమను అందించండి.\n• కూలీలకు సరైన నీటి సదుపాయం కల్పించండి.`,
+      whatsappText: `🌱 *KisanGuard అగ్రోమెట్ వాయిస్ అలర్ట్*\nరైతు: ${name} (${village}, ${district})\nపంట: ${cropLocal} | నీటి పారుదల: ${irrigation}\n\nనమస్కారం ${name} గారు! ${calculatedWbgt}°C వేడిమి నమోదైంది. 11:30-15:30 పనులు ఆపి, సాయంత్రం ${irrigation} ద్వారా నీరందించండి.`,
+      voiceLangCode: "te-IN",
+      voiceName: "Chitra (Telugu Neural)",
+      suggestedDuration: 21,
+    }
+  }
+
+  // 4. Bengali
+  if (normLang === "BN") {
+    return {
+      farmerName: name,
+      village: village,
+      district: district,
+      state: state,
+      cropName: `${cropLocal} (${cropEn})`,
+      stageName: "বৃদ্ধি ও ফুল ধরার পর্যায়",
+      wbgt: calculatedWbgt,
+      riskLevel: "red",
+      haltHours: "11:30 AM - 3:30 PM",
+      spokenText: `নমস্কার ${name} বাবু। ${village}, ${district} কিষাণগার্ড কৃষি বার্তা। ওয়েট-বাল্ব তাপমাত্রা ${calculatedWbgt} ডিগ্রি সেলসিয়াস। আপনার ${cropLocal} ফসলে চরম তাপপ্রবাহের ঝুঁকি রয়েছে। সকাল ১১:৩০ থেকে বিকেল ৩:৩০ পর্যন্ত মাঠে কাজ বন্ধ রাখুন এবং বিকেলে ${irrigation} দিয়ে হালকা সেচ দিন।`,
+      displayBody: `🌾 [কিষাণগার্ড কৃষি বার্তা - ${name}]\nস্থান: ${village}, ${district} | ফসল: ${cropLocal}\nWBGT ${calculatedWbgt}°C — চরম তাপপ্রবাহের সতর্কতা!\n• সকাল ১১:৩০ থেকে বিকেল ৩:৩০ পর্যন্ত কাজ বন্ধ রাখুন।\n• বিকেলে ${irrigation} দিয়ে সেচ দিন।\n• কর্মীদের পর্যাপ্ত পানীয় জল সরবরাহ করুন।`,
+      whatsappText: `🌾 *KisanGuard কৃষি ভয়েস বার্তা*\nকৃষক: ${name} (${village}, ${district})\nফসল: ${cropLocal}\n\nনমস্কার ${name} বাবু! ${calculatedWbgt}°C তাপমাত্রা। ১১:৩০-১৫:৩০ কাজ বন্ধ রাখুন এবং বিকেলে সেচ দিন।`,
+      voiceLangCode: "bn-IN",
+      voiceName: "Basab (Bengali Neural)",
+      suggestedDuration: 20,
+    }
+  }
+
+  // 5. Hindi
+  if (normLang === "HI") {
+    const soilAction = soil.includes("black")
+      ? "काली मिट्टी में गहरी दरारें पड़ने और जड़ों को खिंचाव से बचाने"
+      : soil.includes("sandy")
+      ? "बलुई मिट्टी में तेजी से सूखती नमी को रोकने"
+      : soil.includes("red")
+      ? "लाल मिट्टी में नमी का संतुलन बनाए रखने"
+      : "जड़ क्षेत्र और कैनोपी में नमी बनाए रखने"
+
+    return {
+      farmerName: name,
+      village: village,
+      district: district,
+      state: state,
+      cropName: `${cropLocal} (${cropEn})`,
+      stageName: "वानस्पतिक व फूल अवस्था",
+      wbgt: calculatedWbgt,
+      riskLevel: "red",
+      haltHours: "11:30 AM - 3:30 PM",
+      spokenText: `नमस्ते ${name} जी। ${village}, ${district} के लिए किसानगार्ड एडवाइजरी। वेट-बल्ब तापमान ${calculatedWbgt} डिग्री सेल्सियस पहुंच रहा है। आपकी ${cropLocal} फसल और ${soilAction} के लिए, सुबह 11:30 से दोपहर 3:30 बजे तक खेत का काम बंद रखें। शाम को ${irrigation} द्वारा सिंचाई करके जड़ों को सुरक्षित रखें।`,
+      displayBody: `🌾 [किसानगार्ड कृषि सलाह - ${name}]\nस्थान: ${village}, ${district} | फसल: ${cropLocal} (${soil})\nवेट-बल्ब तापमान ${calculatedWbgt}°C — गंभीर हीट स्ट्रेस अलर्ट!\n• सुबह 11:30 से दोपहर 3:30 तक खेत का काम बंद रखें।\n• ${soilAction} के लिए शाम को ${irrigation} चलाएं।\n• मजदूरों के लिए पर्याप्त पानी व छाया का प्रबंध करें।`,
+      whatsappText: `🌾 *KisanGuard एग्रोमेट वॉइस अलर्ट*\nकिसान: ${name} (${village}, ${district})\nफसल: ${cropLocal} | सिंचाई: ${irrigation}\n\nनमस्ते ${name} जी! ${calculatedWbgt}°C हीट स्ट्रेस दर्ज। 11:30-15:30 काम बंद रखें और शाम को ${irrigation} से पानी दें।`,
+      voiceLangCode: "hi-IN",
+      voiceName: "Aditi (Hindi Neural)",
+      suggestedDuration: 20,
+    }
+  }
+
+  // 6. English Default
+  const soilDesc = soil.includes("black")
+    ? "black vertisol (high shrinkage cracking risk)"
+    : soil.includes("sandy")
+    ? "sandy loam (rapid moisture percolation)"
+    : soil.includes("red")
+    ? "red sandy loam"
+    : "alluvial loam"
+
   return {
     farmerName: name,
     village: village,
     district: district,
     state: state,
-    cropName: safeCrop.charAt(0).toUpperCase() + safeCrop.slice(1),
-    stageName: "Flowering & Vegetative",
-    wbgt: 33.4,
-    riskLevel: "caution",
+    cropName: cropEn,
+    stageName: "Flowering & Vegetative Sizing",
+    wbgt: calculatedWbgt,
+    riskLevel: "red",
     haltHours: "11:30 AM - 3:30 PM",
-    spokenText: `Namaste ${name} ji. KisanGuard agromet alert for ${village}, ${district}. Wet-bulb globe temperature is 33.4 degrees Celsius. High heat stress detected for your ${safeCrop} fields. Please halt heavy field labor between 11:30 AM and 3:30 PM. Provide evening irrigation to protect crop root health and ensure field workers stay hydrated.`,
-    displayBody: `🌾 [KisanGuard Advisory - ${name}]\nLocation: ${village}, ${district} | Crop: ${safeCrop}\nWBGT 33.4°C — Elevated Thermal Stress Alert!\n• Halt field labor between 11:30 AM and 3:30 PM.\n• Schedule evening irrigation to replenish canopy moisture.\n• Keep workers hydrated and sheltered during peak noon hours.`,
-    whatsappText: `🌾 *KisanGuard Agromet Voice Advisory*\nFarmer: ${name} (${village}, ${district})\nCrop: ${safeCrop}\n\nNamaste ${name} ji! Heat stress (WBGT 33.4°C) detected in ${district}. Halt field labor 11:30-15:30 and provide evening irrigation.`,
+    spokenText: `Namaste ${name} ji. KisanGuard agromet advisory for ${village}, ${district} (${state}). Wet-bulb globe temperature is reaching ${calculatedWbgt} degrees Celsius. For your ${cropEn} crop in ${soilDesc}, mandatory halt on field labor between 11:30 AM and 3:30 PM. Execute evening ${irrigation.toLowerCase()} irrigation to maintain root zone moisture and prevent thermal shock.`,
+    displayBody: `🌾 [KisanGuard Advisory - ${name}]\nLocation: ${village}, ${district} (${state}) | Crop: ${cropEn} (${soil})\nWBGT ${calculatedWbgt}°C — High Terminal Heat Stress Alert!\n• Halt heavy field operations between 11:30 AM and 3:30 PM.\n• Apply evening ${irrigation.toLowerCase()} cycle to mitigate soil moisture depletion in ${soilDesc}.\n• Ensure farm workers take hydration breaks every 30 minutes.`,
+    whatsappText: `🌾 *KisanGuard Agromet Voice Advisory*\nFarmer: ${name} (${village}, ${district})\nCrop: ${cropEn} | Irrigation: ${irrigation}\n\nNamaste ${name} ji! Extreme heat (WBGT ${calculatedWbgt}°C) at ${district}. Halt field labor 11:30-15:30. Apply evening ${irrigation.toLowerCase()} to safeguard crop roots.`,
     voiceLangCode: "en-IN",
     voiceName: "Kajal (Indian English Neural)",
-    suggestedDuration: 18,
+    suggestedDuration: 20,
   }
 }

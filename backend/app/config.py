@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     SAGEMAKER_CDHI_ENDPOINT: str = "kisanguard-cdhi-csyr-v2"
 
     # ── Bedrock ──────────────────────────────────────────────────────────
-    BEDROCK_MODEL_ID: str = "anthropic.claude-sonnet-4-6-20250514"
+    BEDROCK_MODEL_ID: str = "meta.llama3-8b-instruct-v1:0"
     BEDROCK_MAX_TOKENS: int = 150
     BEDROCK_TEMPERATURE: float = 0.3
 

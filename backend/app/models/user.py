@@ -100,3 +100,11 @@ class UserErasureResponse(BaseModel):
     status: str = "ERASED"
     erased_at: datetime
     audit_retained: bool = True
+
+
+# Schema aliases for API routes
+UserCreateRequest = UserCreate
+UserCreateResponse = UserResponse
+UserProfileResponse = UserProfile
+UserUpdateRequest = UserUpdate
+DPDPErasureResponse = UserErasureResponse

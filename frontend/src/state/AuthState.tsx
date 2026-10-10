@@ -19,6 +19,7 @@ export interface FarmerUser {
   lat?: number
   lng?: number
   acres?: number
+  soilType?: string
   irrigationMethod?: string
   preferredLanguage?: string
   crops: string[]
@@ -38,6 +39,7 @@ export const DEMO_FARMERS: FarmerUser[] = [
     lat: 19.9975,
     lng: 73.7898,
     acres: 4.5,
+    soilType: "medium-black",
     irrigationMethod: "Drip",
     preferredLanguage: "mr",
     crops: ["wheat", "grape", "onion"],
@@ -55,6 +57,7 @@ export const DEMO_FARMERS: FarmerUser[] = [
     lat: 30.7056,
     lng: 76.2206,
     acres: 5.5,
+    soilType: "alluvial",
     irrigationMethod: "Flood / furrow",
     preferredLanguage: "pa",
     crops: ["wheat", "rice"],
@@ -72,6 +75,7 @@ export const DEMO_FARMERS: FarmerUser[] = [
     lat: 18.4088,
     lng: 76.5604,
     acres: 3.2,
+    soilType: "medium-black",
     irrigationMethod: "Sprinkler",
     preferredLanguage: "mr",
     crops: ["soybean", "tur"],
@@ -89,6 +93,7 @@ export const DEMO_FARMERS: FarmerUser[] = [
     lat: 26.3533,
     lng: 73.0425,
     acres: 6.0,
+    soilType: "sandy",
     irrigationMethod: "Sprinkler",
     preferredLanguage: "hi",
     crops: ["millet", "mustard"],
@@ -106,6 +111,7 @@ export const DEMO_FARMERS: FarmerUser[] = [
     lat: 17.9689,
     lng: 79.5941,
     acres: 3.8,
+    soilType: "red",
     irrigationMethod: "Drip",
     preferredLanguage: "te",
     crops: ["cotton", "maize"],
