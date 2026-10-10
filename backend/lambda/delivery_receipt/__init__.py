@@ -1,0 +1,1 @@
+"""Delivery receipt lambda package."""

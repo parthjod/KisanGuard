@@ -1,0 +1,62 @@
+{
+  "seed": 42,
+  "n_envs": 12,
+  "stage_steps": {
+    "mixed": 200000,
+    "drought": 200000,
+    "heatwave": 200000,
+    "compound": 400000
+  },
+  "obs_dim": 28,
+  "eval_seeds": [
+    101,
+    202,
+    303,
+    404,
+    505
+  ],
+  "data_sources": {
+    "imd_rainfall_025": "https://www.imdpune.gov.in/cmpg/Griddata/Rainfall_25_NetCDF.html",
+    "imd_tmax_1deg": "https://www.imdpune.gov.in/cmpg/Griddata/Max_1_Bin.html",
+    "smap_l3_36km_v9": "https://nsidc.org/data/spl3smp/versions/9",
+    "india_crop_yield_v2": "https://data.mendeley.com/datasets/ncw2vbcgnk/2",
+    "digital_green": "https://zindi.world/competitions/digital-green-crop-yield-estimate-challenge/data",
+    "crop_calendar": "https://desagri.gov.in/document-report-category/agriculture-statistics-at-a-glance/"
+  },
+  "data_readiness": {
+    "imd_rainfall": false,
+    "imd_tmax": false,
+    "smap": true,
+    "india_yield": true,
+    "digital_green": false,
+    "crop_calendar": false,
+    "irrigation_logs": false
+  },
+  "actions_mm": [
+    0.0,
+    10.0,
+    20.0,
+    30.0,
+    40.0,
+    50.0,
+    60.0,
+    80.0
+  ],
+  "ppo": {
+    "policy": "MlpPolicy",
+    "learning_rate": "0.0003",
+    "n_steps": "1024",
+    "batch_size": "512",
+    "n_epochs": "10",
+    "gamma": "0.995",
+    "gae_lambda": "0.97",
+    "clip_range": "0.2",
+    "ent_coef": "0.005",
+    "vf_coef": "0.5",
+    "max_grad_norm": "0.5",
+    "target_kl": "0.03",
+    "policy_kwargs": "{'net_arch': {'pi': [256, 256, 128], 'vf': [256, 256, 128]}, 'activation_fn': <class 'torch.nn.modules.activation.Tanh'>}",
+    "verbose": "1",
+    "seed": "42"
+  }
+}

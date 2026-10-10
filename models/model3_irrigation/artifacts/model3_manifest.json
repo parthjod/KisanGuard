@@ -1,0 +1,69 @@
+{
+  "system": "KisanGuard",
+  "component": "Model 3 \u2014 Irrigation Optimizer",
+  "algorithm": "PPO (MaskablePPO implementation)",
+  "observation_dimension": 28,
+  "action_depths_mm_gross": [
+    0.0,
+    10.0,
+    20.0,
+    30.0,
+    40.0,
+    50.0,
+    60.0,
+    80.0
+  ],
+  "crops": [
+    "wheat",
+    "rice",
+    "maize",
+    "sorghum",
+    "millet"
+  ],
+  "stages": [
+    "establishment",
+    "vegetative",
+    "critical",
+    "maturation"
+  ],
+  "training_seed": 42,
+  "n_envs": 12,
+  "curriculum": {
+    "mixed": 200000,
+    "drought": 200000,
+    "heatwave": 200000,
+    "compound": 400000
+  },
+  "reward_definition": "yield - water cost - stress penalty (supplied kg_env.py)",
+  "primary_prd_metric": ">= 20% WUE improvement vs Farmer Calendar baseline",
+  "data_sources": {
+    "imd_rainfall_025": "https://www.imdpune.gov.in/cmpg/Griddata/Rainfall_25_NetCDF.html",
+    "imd_tmax_1deg": "https://www.imdpune.gov.in/cmpg/Griddata/Max_1_Bin.html",
+    "smap_l3_36km_v9": "https://nsidc.org/data/spl3smp/versions/9",
+    "india_crop_yield_v2": "https://data.mendeley.com/datasets/ncw2vbcgnk/2",
+    "digital_green": "https://zindi.world/competitions/digital-green-crop-yield-estimate-challenge/data",
+    "crop_calendar": "https://desagri.gov.in/document-report-category/agriculture-statistics-at-a-glance/"
+  },
+  "data_readiness": {
+    "imd_rainfall": false,
+    "imd_tmax": false,
+    "smap": true,
+    "india_yield": true,
+    "digital_green": false,
+    "crop_calendar": false,
+    "irrigation_logs": false
+  },
+  "calibration_period": [
+    "2015-01-01",
+    "2020-12-31"
+  ],
+  "validation_period": [
+    "2021-01-01",
+    "2024-12-31"
+  ],
+  "production_notes": {
+    "confidence": "must be calibrated",
+    "verification": "trust layer / A2I integration required",
+    "data_validation": "real-world field validation required before operational use"
+  }
+}

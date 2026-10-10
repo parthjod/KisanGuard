@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ../models:/app/models:ro
+    depends_on:
+      - localstack
+    environment:
+      - AWS_REGION=ap-south-1
+      - USE_LOCAL_MODELS=true
+      - LOCALSTACK_ENDPOINT=http://localstack:4566
+
+  localstack:
+    image: localstack/localstack:3.4
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=dynamodb,s3,sqs,events,sns,secretsmanager
+      - DEFAULT_REGION=ap-south-1
+    volumes:
+      - "./scratch/localstack:/var/lib/localstack"

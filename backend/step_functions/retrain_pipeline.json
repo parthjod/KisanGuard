@@ -1,0 +1,83 @@
+{
+  "Comment": "KisanGuard Continuous Model Retraining Pipeline triggered by drift detection",
+  "StartAt": "FetchTrainingData",
+  "States": {
+    "FetchTrainingData": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-fetch-retrain-data",
+      "Comment": "Pulls latest 12 months verified data from S3 features and IMD archives",
+      "Next": "TrainModels"
+    },
+    "TrainModels": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "TrainWBGT",
+          "States": {
+            "TrainWBGT": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sagemaker:createTrainingJob.sync",
+              "Parameters": {
+                "TrainingJobName.$": "States.Format('retrain-wbgt-{}', $$.Execution.StartTime)",
+                "AlgorithmSpecification": {
+                  "TrainingImage": "683313688378.dkr.ecr.ap-south-1.amazonaws.com/sagemaker-xgboost:1.7-1",
+                  "TrainingInputMode": "File"
+                }
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "TrainCDHI",
+          "States": {
+            "TrainCDHI": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sagemaker:createTrainingJob.sync",
+              "Parameters": {
+                "TrainingJobName.$": "States.Format('retrain-cdhi-{}', $$.Execution.StartTime)",
+                "AlgorithmSpecification": {
+                  "TrainingImage": "683313688378.dkr.ecr.ap-south-1.amazonaws.com/sagemaker-xgboost:1.7-1",
+                  "TrainingInputMode": "File"
+                }
+              },
+              "End": true
+            }
+          }
+        }
+      ],
+      "Next": "EvaluateMetrics"
+    },
+    "EvaluateMetrics": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-eval-models",
+      "Next": "CheckMetricsPassing"
+    },
+    "CheckMetricsPassing": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.metrics_passed",
+          "BooleanEquals": true,
+          "Next": "PromoteToModelRegistry"
+        }
+      ],
+      "Default": "AlertOpsRetrainFailed"
+    },
+    "PromoteToModelRegistry": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-promote-model",
+      "Next": "UpdateSageMakerEndpoint"
+    },
+    "UpdateSageMakerEndpoint": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sagemaker:createEndpointConfig",
+      "End": true
+    },
+    "AlertOpsRetrainFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-alert-ops-failure",
+      "End": true
+    }
+  }
+}

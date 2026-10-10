@@ -1,0 +1,195 @@
+{
+  "Comment": "KisanGuard Alert Pipeline — End-to-end trust layer, ML inference, and alert delivery orchestration",
+  "StartAt": "CheckDataQuality",
+  "States": {
+    "CheckDataQuality": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-check-data-quality",
+      "Comment": "Validates data freshness, missing_pct, and completeness across IMD, SMAP, and satellite",
+      "Next": "ComputeWBGT"
+    },
+    "ComputeWBGT": {
+      "Type": "Map",
+      "Comment": "Runs WBGT inference in parallel across all candidate wards",
+      "ItemsPath": "$.ward_list",
+      "MaxConcurrency": 500,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "RunWBGT",
+        "States": {
+          "RunWBGT": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-wbgt-inference",
+            "Next": "WBGTTrustCheck"
+          },
+          "WBGTTrustCheck": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-trust-check",
+            "Next": "WBGTTrustRouter"
+          },
+          "WBGTTrustRouter": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.a2i_flagged",
+                "BooleanEquals": true,
+                "Next": "SubmitWBGTToA2I"
+              }
+            ],
+            "Default": "WBGTResultReady"
+          },
+          "SubmitWBGTToA2I": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-submit-to-a2i",
+            "End": true
+          },
+          "WBGTResultReady": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "Next": "ComputeCDHI"
+    },
+    "ComputeCDHI": {
+      "Type": "Map",
+      "Comment": "Runs CDHI / yield-loss inference across registered farmer plots",
+      "ItemsPath": "$.plot_list",
+      "MaxConcurrency": 200,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "RunCDHI",
+        "States": {
+          "RunCDHI": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-cdhi-inference",
+            "Next": "CDHITrustCheck"
+          },
+          "CDHITrustCheck": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-trust-check",
+            "Next": "CDHITrustRouter"
+          },
+          "CDHITrustRouter": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.a2i_flagged",
+                "BooleanEquals": true,
+                "Next": "SubmitCDHIToA2I"
+              }
+            ],
+            "Default": "CDHIResultReady"
+          },
+          "SubmitCDHIToA2I": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-submit-to-a2i",
+            "End": true
+          },
+          "CDHIResultReady": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "Next": "ComputeIrrigation"
+    },
+    "ComputeIrrigation": {
+      "Type": "Map",
+      "Comment": "Runs Model 3 PPO irrigation policy and MAD evaluations",
+      "ItemsPath": "$.plot_list",
+      "MaxConcurrency": 200,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "RunIrrigation",
+        "States": {
+          "RunIrrigation": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-irrigation-inference",
+            "End": true
+          }
+        }
+      },
+      "Next": "AggregateResults"
+    },
+    "AggregateResults": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-aggregate-predictions",
+      "Next": "RouteAlerts"
+    },
+    "RouteAlerts": {
+      "Type": "Map",
+      "Comment": "Dispatches localized alerts per user respecting fatigue caps",
+      "ItemsPath": "$.users_to_alert",
+      "MaxConcurrency": 1000,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
+        "StartAt": "CheckFatigueCap",
+        "States": {
+          "CheckFatigueCap": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-check-fatigue-cap",
+            "Next": "FatigueRouter"
+          },
+          "FatigueRouter": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.can_send",
+                "BooleanEquals": false,
+                "Next": "SkipAlert"
+              }
+            ],
+            "Default": "GenerateAdvisory"
+          },
+          "GenerateAdvisory": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-generate-bedrock-advisory",
+            "Next": "DeliverAlert"
+          },
+          "DeliverAlert": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-deliver-alert",
+            "Retry": [
+              {
+                "ErrorEquals": ["States.TaskFailed"],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 2,
+                "BackoffRate": 2.0
+              }
+            ],
+            "Next": "LogAudit"
+          },
+          "LogAudit": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-write-audit",
+            "End": true
+          },
+          "SkipAlert": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "Next": "BroadcastDashboard"
+    },
+    "BroadcastDashboard": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-broadcast-websocket",
+      "Next": "SendPartnerWebhooks"
+    },
+    "SendPartnerWebhooks": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:ap-south-1:123456789012:function:kisanguard-send-partner-webhooks",
+      "End": true
+    }
+  }
+}

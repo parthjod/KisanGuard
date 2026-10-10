@@ -1,0 +1,83 @@
+{
+  "model_name": "KisanGuard-Model2-CDHI-CSYR",
+  "version": "2.0.0",
+  "prd_version": "2.0",
+  "trained_at": "2026-10-03T11:59:11.953763",
+  "status": "real-data training prototype",
+  "n_features": 12,
+  "train_samples": 64,
+  "calibration_samples": 16,
+  "test_samples": 16,
+  "train_years": [
+    2015,
+    2016,
+    2017,
+    2018
+  ],
+  "calibration_year": 2019,
+  "test_year": 2020,
+  "data_period": "2015\u20132020 model rows; 1991\u20132020 IMD rainfall SPI calibration",
+  "data_sources": {
+    "imd_rainfall": "https://www.imdpune.gov.in/cmpg/Griddata/Rainfall_25_NetCDF.html",
+    "imd_max_temperature": "https://www.imdpune.gov.in/cmpg/Griddata/Max_1_Bin.html",
+    "smap_enhanced_l3_v6": "https://nsidc.org/data/spl3smp_e/versions/6",
+    "earthdata_login": "https://urs.earthdata.nasa.gov/",
+    "india_crop_yield": "https://data.mendeley.com/datasets/ncw2vbcgnk/2",
+    "geoboundaries_adm1": "https://www.geoboundaries.org/api/current/gbOpen/IND/ADM1/"
+  },
+  "metrics": {
+    "auc": null,
+    "mape_pct_positive_loss_cases": 2321.64,
+    "brier": 0.0031,
+    "avg_precision": null,
+    "mae": 6.25,
+    "cv_auc_mean": null,
+    "cv_mape_mean_positive_loss_cases": null
+  },
+  "crops": [
+    "wheat",
+    "rice",
+    "maize",
+    "sorghum",
+    "millet"
+  ],
+  "stages": [
+    "flowering",
+    "grain_filling",
+    "silking"
+  ],
+  "best_params_clf": {
+    "n_estimators": 325,
+    "max_depth": 8,
+    "learning_rate": 0.07259248719561363,
+    "subsample": 0.8795975452591109,
+    "colsample_bytree": 0.7468055921327309,
+    "min_child_weight": 2,
+    "gamma": 0.17425083650459838,
+    "reg_alpha": 1.7323522915498704,
+    "reg_lambda": 3.20501755284444,
+    "objective": "binary:logistic",
+    "eval_metric": "auc",
+    "scale_pos_weight": 63.0,
+    "random_state": 42,
+    "tree_method": "hist"
+  },
+  "best_params_reg": {
+    "n_estimators": 536,
+    "max_depth": 7,
+    "learning_rate": 0.010140319938535536,
+    "subsample": 0.8191466664122893,
+    "colsample_bytree": 0.7533388147800918,
+    "min_child_weight": 10,
+    "gamma": 1.8207528620640403,
+    "reg_alpha": 0.6688201456285657,
+    "reg_lambda": 4.393037596218173,
+    "objective": "reg:squarederror",
+    "eval_metric": "mae",
+    "random_state": 42,
+    "tree_method": "hist"
+  },
+  "cdhi_note": "MVP composite weights retained from the original notebook and require domain validation.",
+  "risk_probability_threshold": 0.5,
+  "a2i_note": "The separate trust/A2I layer is not claimed as model confidence; probabilities are used as risk probabilities here."
+}

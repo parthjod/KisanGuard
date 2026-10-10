@@ -1,0 +1,14 @@
+[
+  "spi_3",
+  "spi_6",
+  "spi_12",
+  "sma",
+  "ahsd",
+  "hsi",
+  "hdd",
+  "cdhi",
+  "yield_baseline",
+  "crop_type_enc",
+  "crop_stage_enc",
+  "season_enc"
+]
