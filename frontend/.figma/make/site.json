@@ -1,0 +1,14 @@
+{
+  "title": "KisanGuard | Climate & Crop Risk Intelligence",
+  "description": "Provides Indian farmers with climate and crop risk insights through weather, satellite data, and alerts to enable smarter, timely agricultural decisions.",
+  "icons": {
+    "icon": "/kisanguard-symbol.png"
+  },
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
