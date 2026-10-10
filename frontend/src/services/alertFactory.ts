@@ -117,7 +117,7 @@ export function buildAlertTimeline(
       id: "verify",
       at: new Date(createdAt.getTime() + 240_000).toISOString(),
       actor: "ai-model",
-      label: "AI Cross-Check Confirmed (Model 3 & Bedrock Claude 3.5)",
+      label: "AI Cross-Check Confirmed (Model 3 & Bedrock Meta Llama 3)",
       detail: `Dual-model agreement tolerance passed (delta ${between(random, 0.1, 0.4).toFixed(1)}°C). Auto-cleared for immediate broadcast.`,
     })
   } else if (verification === "human-reviewed") {

@@ -1,4 +1,4 @@
-"""Feature 4 / PRD FR-12: Personalized advisory text via Amazon Bedrock (Claude)."""
+"""Feature 4 / PRD FR-12: Personalized advisory text via Amazon Bedrock (Meta Llama 3)."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ OFFLINE_TEMPLATES: dict[str, dict[str, str]] = {
 
 class BedrockService:
     """
-    PRD FR-12: Personalized advisory text via Amazon Bedrock (Claude Sonnet).
+    PRD FR-12: Personalized advisory text via Amazon Bedrock (Meta Llama 3).
     Constraint-checked per channel (SMS <= 160 chars, Voice <= 45 words).
     """
 
@@ -82,7 +82,7 @@ class BedrockService:
         irrigation_method: str | None = None,
     ) -> str:
         """
-        Calls Amazon Bedrock Claude Sonnet to generate concise localized advisory.
+        Calls Amazon Bedrock Meta Llama 3 to generate concise localized advisory.
         Falls back smoothly to curated templates if Bedrock is offline or during testing.
         """
         severity_norm = (severity or "CAUTION").upper()

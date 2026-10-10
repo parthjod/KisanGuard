@@ -362,7 +362,7 @@ export default function PersonalizedAlertsScreen() {
               </div>
               <div className="flex justify-between">
                 <span>Model Pipeline:</span>
-                <strong className="text-emerald-800 font-semibold">Bedrock (Claude) &rarr; Polly Neural</strong>
+                <strong className="text-emerald-800 font-semibold">Bedrock (Meta Llama 3) &rarr; Polly Neural</strong>
               </div>
               <div className="flex justify-between">
                 <span>Primary Channel:</span>
