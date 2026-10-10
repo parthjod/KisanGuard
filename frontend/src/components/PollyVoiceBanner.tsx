@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react"
 import { Volume2, VolumeX, Play, Square, Share2, Check, ExternalLink } from "lucide-react"
 import { LANGUAGES } from "../services/mockData"
+import { pollySynthesizer } from "../services/pollyAudioSynthesizer"
 
 interface PollyVoiceBannerProps {
   language?: string
@@ -25,8 +26,6 @@ export function PollyVoiceBanner({
   const [activeLang, setActiveLang] = useState(language.toUpperCase())
   const [copiedLink, setCopiedLink] = useState(false)
 
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
   // Map language code to audio file name
   const langKey = activeLang.toLowerCase()
   const audioSrc = `/audio/advisory_${langKey}.mp3`
@@ -40,42 +39,41 @@ export function PollyVoiceBanner({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
+      pollySynthesizer.stop()
     }
   }, [])
 
   function togglePlay() {
     if (isPlaying) {
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
+      pollySynthesizer.stop()
       setIsPlaying(false)
+      setCurrentTime(0)
     } else {
-      if (!audioRef.current || audioRef.current.src !== window.location.origin + audioSrc) {
-        audioRef.current = new Audio(audioSrc)
-        audioRef.current.ontimeupdate = () => {
-          if (audioRef.current) {
-            setCurrentTime(audioRef.current.currentTime)
-            if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-              setDuration(audioRef.current.duration)
-            }
-          }
+      const textToSpeak = advisoryText || `Namaste. KisanGuard agromet advisory for ${locationName}. Moderate heat risk. Avoid midday field labor and hydrate workers.`
+      const langCode =
+        activeLang === "PA"
+          ? "pa-IN"
+          : activeLang === "MR"
+          ? "mr-IN"
+          : activeLang === "TE"
+          ? "te-IN"
+          : activeLang === "BN"
+          ? "bn-IN"
+          : activeLang === "HI"
+          ? "hi-IN"
+          : "en-IN"
+
+      pollySynthesizer.speak(
+        textToSpeak,
+        langCode,
+        duration,
+        audioSrc,
+        (state) => {
+          setIsPlaying(state.isPlaying)
+          setCurrentTime(state.currentTime)
+          if (state.duration) setDuration(state.duration)
         }
-        audioRef.current.onended = () => {
-          setIsPlaying(false)
-          setCurrentTime(0)
-        }
-        audioRef.current.onerror = () => {
-          setIsPlaying(false)
-        }
-      }
-      audioRef.current
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false))
+      )
     }
   }
 

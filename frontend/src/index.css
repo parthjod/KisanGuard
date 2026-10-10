@@ -1594,26 +1594,6 @@ footer {
   font-weight: 700;
 }
 
-.footer-github-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  background: #f4f6f0;
-  border: 1px solid #dcdfd5;
-  border-radius: 8px;
-  color: #2b2d28;
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-
-.footer-github-link:hover {
-  background: #e7ece0;
-  border-color: #557d2b;
-  color: #1e3d0f;
-}
 
 .footer-bottom {
   position: relative;
@@ -4660,9 +4640,27 @@ footer {
 
 .kg-persona-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 16px;
   align-items: stretch;
+}
+
+@media (max-width: 1024px) {
+  .kg-persona-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .kg-persona-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .kg-persona-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .kg-persona-card {
@@ -4670,13 +4668,14 @@ footer {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 20px 18px;
+  padding: 18px 16px;
   text-align: left;
   background: var(--white);
   border: 1px solid #e0e2dc;
   border-radius: 16px;
   cursor: pointer;
-  min-height: 220px;
+  min-height: 240px;
+  height: 100%;
   transition: border-color .18s, transform .18s, box-shadow .18s;
 }
 

@@ -548,8 +548,6 @@ export default function YieldRiskScreen() {
           ) : (
             <Loading label="Building recommended action" />
           )}
-
-          <SimulatedNotice />
         </div>
       </section>
 

@@ -608,8 +608,6 @@ export default function CropHealthScreen() {
               {t("cropHealth.iconNote4")}
             </span>
           </div>
-
-          <SimulatedNotice />
         </div>
       </RevealSection>
     </FeatureShell>

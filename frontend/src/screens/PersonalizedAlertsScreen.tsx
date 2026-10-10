@@ -31,7 +31,6 @@ import {
   RangeField,
   Segmented,
   SeverityBadge,
-  SimulatedNotice,
   Toggle,
 } from "../components/ui"
 import { FeatureShell } from "../components/SiteChrome"
@@ -47,6 +46,8 @@ import {
   FREQUENCY_OPTIONS,
   preferenceService,
 } from "../services/preferenceService"
+import { getPersonalizedAdvisory } from "../services/farmerAdvisoryEngine"
+import { pollySynthesizer } from "../services/pollyAudioSynthesizer"
 import { relativeTime } from "../services/random"
 import { useAppState } from "../state/AppState"
 import { useAuth, DEMO_FARMERS, FarmerUser } from "../state/AuthState"
@@ -174,7 +175,12 @@ export default function PersonalizedAlertsScreen() {
     (item) => preferences.channels[item.id],
   )
 
+  const farmerAdvisory = useMemo(() => {
+    return getPersonalizedAdvisory(activeSubscriber, preferences.language)
+  }, [activeSubscriber, preferences.language])
+
   function handleSelectFarmer(farmer: FarmerUser) {
+    stopPollyAudio()
     login(farmer)
     const nextLang = (farmer.preferredLanguage?.toUpperCase() || (farmer.state === "Punjab" ? "PA" : farmer.state === "Telangana" ? "TE" : "HI"))
     setPreferences((prev) => ({
@@ -209,12 +215,17 @@ export default function PersonalizedAlertsScreen() {
     }
   }, [user])
 
-
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null)
   const [isPlayingPolly, setIsPlayingPolly] = useState(false)
   const [pollyProgress, setPollyProgress] = useState(0)
-  const [pollyDuration, setPollyDuration] = useState(0)
+  const [pollyDuration, setPollyDuration] = useState(18)
   const [pollyCurrentTime, setPollyCurrentTime] = useState(0)
+
+  // Cleanup speech synthesis on unmount
+  useEffect(() => {
+    return () => {
+      pollySynthesizer.stop()
+    }
+  }, [])
 
   const getAudioUrlForLanguage = (lang: string) => {
     const l = (lang || "hi").toLowerCase()
@@ -225,51 +236,26 @@ export default function PersonalizedAlertsScreen() {
   }
 
   function playPollyAudio() {
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause()
-      audioPlayerRef.current = null
-    }
-
-    const audioUrl = getAudioUrlForLanguage(preferences.language)
-    const audio = new Audio(audioUrl)
-    audioPlayerRef.current = audio
-
-    audio.onloadedmetadata = () => {
-      setPollyDuration(audio.duration || 18)
-    }
-
-    audio.ontimeupdate = () => {
-      if (audio.duration) {
-        setPollyProgress((audio.currentTime / audio.duration) * 100)
-        setPollyCurrentTime(audio.currentTime)
+    pollySynthesizer.speak(
+      farmerAdvisory.spokenText,
+      farmerAdvisory.voiceLangCode,
+      farmerAdvisory.suggestedDuration,
+      getAudioUrlForLanguage(preferences.language),
+      (state) => {
+        setIsPlayingPolly(state.isPlaying)
+        setPollyProgress(state.progress)
+        setPollyCurrentTime(state.currentTime)
+        setPollyDuration(state.duration)
       }
-    }
-
-    audio.onended = () => {
-      setIsPlayingPolly(false)
-      setPollyProgress(0)
-      setPollyCurrentTime(0)
-    }
-
-    audio.onerror = (e) => {
-      console.warn("Audio element playback notice:", e)
-      setIsPlayingPolly(false)
-    }
-
-    audio.play().then(() => {
-      setIsPlayingPolly(true)
-    }).catch((err) => {
-      console.warn("Autoplay notice, retrying on direct click:", err)
-    })
+    )
   }
 
   function stopPollyAudio() {
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause()
-      audioPlayerRef.current.currentTime = 0
-    }
-    setIsPlayingPolly(false)
-    setPollyProgress(0)
+    pollySynthesizer.stop((state) => {
+      setIsPlayingPolly(false)
+      setPollyProgress(0)
+      setPollyCurrentTime(0)
+    })
   }
 
   function togglePollyAudio() {
@@ -282,15 +268,10 @@ export default function PersonalizedAlertsScreen() {
 
   function handleSendWhatsAppDirect() {
     const cleanPhone = phoneNumber.replace(/[^0-9]/g, "")
-    const activeMsg =
-      previewData?.body ||
-      `[KisanGuard Alert] High heat stress expected in ${activeSubscriber.district}. Halt field labor 11:30-15:30.`
     const audioUrl = `https://d2wnlort4mta2e.cloudfront.net/audio/advisory_${(preferences.language || "hi").toLowerCase()}.mp3`
     const textToSend = encodeURIComponent(
-      `🌾 *KisanGuard Agromet Voice Advisory (Amazon Polly)*\n` +
-      `📍 Farmer: ${activeSubscriber.name} (${activeSubscriber.district})\n\n` +
-      `${activeMsg}\n\n` +
-      `🔊 *Listen to Amazon Polly Voice Note (0:18):*\n${audioUrl}\n\n` +
+      `${farmerAdvisory.whatsappText}\n\n` +
+      `🔊 *Listen to Amazon Polly Voice Note (${Math.round(farmerAdvisory.suggestedDuration)}s):*\n${audioUrl}\n\n` +
       `_Dispatched via KisanGuard Climate & Crop Intelligence_`
     )
     const url = cleanPhone
@@ -441,23 +422,34 @@ export default function PersonalizedAlertsScreen() {
                   className={`kg-persona-card group${isActive ? " is-active" : ""}`}
                   onClick={() => handleSelectFarmer(f)}
                 >
-                  <div>
-                    <span className="kg-avatar">{initials}</span>
-                    <strong>{f.name}</strong>
-                    <div className="kg-persona-local">{f.preferredLanguage?.toUpperCase() || "REGIONAL"}</div>
-                    <em>{f.crops.join(", ")} Farmer</em>
-                    <div className="kg-persona-meta">
-                      {f.village || f.district}, {f.district} ({f.state}) &middot; PIN {f.pincode || "—"}
+                  <div className="flex flex-col h-full justify-between w-full">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="kg-avatar">{initials}</span>
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100/90 text-emerald-900 uppercase">
+                          {f.preferredLanguage?.toUpperCase() || "REGIONAL"}
+                        </span>
+                      </div>
+                      <strong className="block text-stone-900 font-bold text-[15px]">{f.name}</strong>
+                      <div className="text-xs text-emerald-800 font-semibold capitalize mt-0.5">
+                        {f.crops.join(", ")} Farmer
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-1 line-clamp-2 leading-tight">
+                        {f.village || f.district}, {f.district} ({f.state})
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-3 min-h-[26px] flex items-center">
-                    {isActive ? (
-                      <span className="kg-persona-active">✓ Active Farmer</span>
-                    ) : (
-                      <span className="text-[11px] text-stone-500 font-medium group-hover:text-emerald-700 transition">
-                        Select profile &rarr;
+                    <div className="mt-4 pt-2.5 border-t border-stone-200/80 flex items-center justify-between text-[11px] w-full">
+                      {isActive ? (
+                        <span className="kg-persona-active">✓ Active Target</span>
+                      ) : (
+                        <span className="text-stone-500 font-medium group-hover:text-emerald-700 transition">
+                          Select profile &rarr;
+                        </span>
+                      )}
+                      <span className="font-semibold text-stone-600">
+                        {f.irrigationMethod || "Drip"}
                       </span>
-                    )}
+                    </div>
                   </div>
                 </button>
               )
@@ -483,132 +475,132 @@ export default function PersonalizedAlertsScreen() {
           <div style={{ marginBottom: "24px" }}>
             <PollyVoiceBanner
               language={preferences.language}
-              locationName={`${activeSubscriber.village}, ${activeSubscriber.district}`}
-              cropName={activeSubscriber.role}
-              advisoryText={previewData?.body}
+              locationName={`${farmerAdvisory.village}, ${farmerAdvisory.district}`}
+              cropName={`${farmerAdvisory.cropName} (${farmerAdvisory.stageName})`}
+              advisoryText={farmerAdvisory.spokenText}
             />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             {/* Interactive Preview Card */}
-            <Card className="flex flex-col justify-between">
-              <div>
-                <CardHeader
-                  eyebrow="Delivery Format"
-                  title="Phone Message Simulator"
-                  detail="Live preview rendered from active routing rules"
-                />
+            <Card className="flex flex-col justify-between h-full">
+              <div className="flex-1 flex flex-col justify-between">
+                <div>
+                  <CardHeader
+                    eyebrow="Delivery Format"
+                    title="Phone Message Simulator"
+                    detail="Live preview rendered from active routing rules"
+                  />
 
-                <Segmented
-                  label="Channel"
-                  value={channel}
-                  onChange={setChannel}
-                  options={CHANNEL_OPTIONS.map((item) => ({
-                    value: item.id,
-                    label: item.label,
-                  }))}
-                  size="small"
-                />
+                  <Segmented
+                    label="Channel"
+                    value={channel}
+                    onChange={setChannel}
+                    options={CHANNEL_OPTIONS.map((item) => ({
+                      value: item.id,
+                      label: item.label,
+                    }))}
+                    size="small"
+                  />
 
-                {/* Smartphone Mockup */}
-                {channel === "whatsapp" ? (
-                  <div className="mt-4 rounded-2xl overflow-hidden border border-emerald-300 shadow-xs bg-[#e5ddd5]">
-                    {/* WhatsApp Header */}
-                    <div className="bg-[#075e54] text-white p-2.5 px-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs">
-                          KG
+                  {/* Smartphone Mockup */}
+                  {channel === "whatsapp" ? (
+                    <div className="mt-4 rounded-2xl overflow-hidden border border-emerald-300 shadow-xs bg-[#e5ddd5]">
+                      {/* WhatsApp Header */}
+                      <div className="bg-[#075e54] text-white p-2.5 px-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs">
+                            KG
+                          </div>
+                          <div>
+                            <div className="font-bold text-xs leading-none">KisanGuard Agri-Advisory</div>
+                            <div className="text-[10px] text-emerald-200">online &middot; Agromet Verified</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-bold text-xs leading-none">KisanGuard Agri-Advisory</div>
-                          <div className="text-[10px] text-emerald-200">online &middot; Agromet Verified</div>
-                        </div>
+                        <span className="text-[10px] font-mono bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded font-bold">
+                          WhatsApp
+                        </span>
                       </div>
-                      <span className="text-[10px] font-mono bg-emerald-800 text-emerald-100 px-1.5 py-0.5 rounded font-bold">
-                        WhatsApp
-                      </span>
-                    </div>
 
-                    {/* WhatsApp Chat Body */}
-                    <div className="p-3 space-y-2.5 text-xs">
-                      {/* WhatsApp Voice Note Bubble */}
-                      <div className="bg-[#dcf8c6] text-stone-900 p-2.5 rounded-xl rounded-tl-none shadow-xs border border-emerald-200/80 max-w-[92%] space-y-1.5">
-                        <div className="flex items-center gap-2.5">
-                          <button
-                            type="button"
-                            onClick={togglePollyAudio}
-                            className={`w-9 h-9 rounded-full flex items-center justify-center text-white shrink-0 cursor-pointer shadow-xs ${
-                              isPlayingPolly ? "bg-red-600 hover:bg-red-700" : "bg-[#075e54] hover:bg-[#128c7e]"
-                            }`}
-                            title={isPlayingPolly ? "Stop Voice Note" : "Play Voice Note (Amazon Polly)"}
-                          >
-                            {isPlayingPolly ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
-                          </button>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between text-[11px] font-mono font-bold text-emerald-950">
-                              <span>Amazon Polly Voice Note</span>
-                              <span>
-                                {isPlayingPolly
-                                  ? `0:${Math.floor(pollyCurrentTime).toString().padStart(2, "0")} / 0:18`
-                                  : "0:18"}
-                              </span>
+                      {/* WhatsApp Chat Body */}
+                      <div className="p-3 space-y-2.5 text-xs">
+                        {/* WhatsApp Voice Note Bubble */}
+                        <div className="bg-[#dcf8c6] text-stone-900 p-2.5 rounded-xl rounded-tl-none shadow-xs border border-emerald-200/80 max-w-[92%] space-y-1.5">
+                          <div className="flex items-center gap-2.5">
+                            <button
+                              type="button"
+                              onClick={togglePollyAudio}
+                              className={`w-9 h-9 rounded-full flex items-center justify-center text-white shrink-0 cursor-pointer shadow-xs ${
+                                isPlayingPolly ? "bg-red-600 hover:bg-red-700" : "bg-[#075e54] hover:bg-[#128c7e]"
+                              }`}
+                              title={isPlayingPolly ? "Stop Voice Note" : "Play Voice Note (Amazon Polly)"}
+                            >
+                              {isPlayingPolly ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between text-[11px] font-mono font-bold text-emerald-950">
+                                <span>Amazon Polly &middot; {farmerAdvisory.farmerName}</span>
+                                <span>
+                                  {isPlayingPolly
+                                    ? `0:${Math.floor(pollyCurrentTime).toString().padStart(2, "0")} / 0:${Math.round(pollyDuration || farmerAdvisory.suggestedDuration)}`
+                                    : `0:${Math.round(farmerAdvisory.suggestedDuration)}`}
+                                </span>
+                              </div>
+                              {/* Waveform graphic */}
+                              <div className="flex items-center gap-0.5 mt-1 h-3">
+                                {[4, 8, 12, 6, 14, 9, 11, 7, 13, 10, 8, 14, 6, 12, 5, 10, 7].map((h, i) => (
+                                  <span
+                                    key={i}
+                                    className={`w-1 rounded-full transition-all duration-150 ${
+                                      isPlayingPolly ? "bg-[#075e54] animate-pulse" : "bg-emerald-700/60"
+                                    }`}
+                                    style={{ height: `${h}px` }}
+                                  />
+                                ))}
+                              </div>
                             </div>
-                            {/* Waveform graphic */}
-                            <div className="flex items-center gap-0.5 mt-1 h-3">
-                              {[4, 8, 12, 6, 14, 9, 11, 7, 13, 10, 8, 14, 6, 12, 5, 10, 7].map((h, i) => (
-                                <span
-                                  key={i}
-                                  className={`w-1 rounded-full transition-all duration-150 ${
-                                    isPlayingPolly ? "bg-[#075e54] animate-pulse" : "bg-emerald-700/60"
-                                  }`}
-                                  style={{ height: `${h}px` }}
-                                />
-                              ))}
-                            </div>
+                          </div>
+
+                          <div className="text-[10px] text-stone-600 flex items-center justify-between pt-1 border-t border-emerald-300/40">
+                            <span className="italic font-medium text-emerald-900">Voice: {farmerAdvisory.voiceName}</span>
+                            <span className="text-[#075e54] font-bold">✓✓ PTT Delivered</span>
                           </div>
                         </div>
 
-                        <div className="text-[10px] text-stone-600 flex items-center justify-between pt-1 border-t border-emerald-300/40">
-                          <span className="italic">Voice: {preferences.language === "EN" ? "Kajal Neural" : "Aditi Neural"}</span>
-                          <span className="text-[#075e54] font-bold">✓✓ PTT Delivered</span>
-                        </div>
-                      </div>
-
-                      {/* WhatsApp Text Bubble */}
-                      <div className="bg-white text-stone-900 p-2.5 rounded-xl rounded-tl-none shadow-xs border border-stone-200 max-w-[92%] space-y-1">
-                        <p className="text-[12px] leading-relaxed whitespace-pre-line">{previewData?.body ?? "—"}</p>
-                        <div className="flex items-center justify-between text-[10px] text-stone-500 pt-1">
-                          <span className="text-[#075e54] font-semibold">{previewData?.cta}</span>
-                          <span className="text-blue-600 font-bold">✓✓</span>
+                        {/* WhatsApp Text Bubble */}
+                        <div className="bg-white text-stone-900 p-2.5 rounded-xl rounded-tl-none shadow-xs border border-stone-200 max-w-[92%] space-y-1">
+                          <p className="text-[12px] leading-relaxed whitespace-pre-line">{farmerAdvisory.displayBody}</p>
+                          <div className="flex items-center justify-between text-[10px] text-stone-500 pt-1">
+                            <span className="text-[#075e54] font-semibold">Halt Hours: {farmerAdvisory.haltHours}</span>
+                            <span className="text-blue-600 font-bold">✓✓</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="mt-4 p-4 rounded-xl border border-stone-200 bg-stone-50 shadow-xs space-y-2">
-                    <div className="flex items-center justify-between text-xs font-semibold text-stone-700">
-                      <div className="flex items-center gap-1.5 text-emerald-800">
-                        <Eye size={14} />
-                        <span>KisanGuard Web Intelligence Feed</span>
+                  ) : (
+                    <div className="mt-4 p-4 rounded-xl border border-stone-200 bg-stone-50 shadow-xs space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-stone-700">
+                        <div className="flex items-center gap-1.5 text-emerald-800">
+                          <Eye size={14} />
+                          <span>KisanGuard Web Intelligence Feed</span>
+                        </div>
+                        <span className="font-mono text-[10px] bg-stone-200 text-stone-700 px-1.5 py-0.5 rounded">
+                          {preferences.language}
+                        </span>
                       </div>
-                      <span className="font-mono text-[10px] bg-stone-200 text-stone-700 px-1.5 py-0.5 rounded">
-                        {previewData?.language ?? "—"}
-                      </span>
-                    </div>
-                    {previewData?.subject ? (
                       <strong className="block text-xs text-stone-900 font-bold">
-                        {previewData.subject}
+                        Heat Advisory for {farmerAdvisory.farmerName} ({farmerAdvisory.village})
                       </strong>
-                    ) : null}
-                    <p className="text-xs text-stone-700 leading-relaxed whitespace-pre-line">
-                      {previewData?.body ?? "—"}
-                    </p>
-                    <div className="pt-2 border-t border-stone-200 flex items-center justify-between text-[11px] text-emerald-800 font-medium">
-                      <span>{previewData?.cta}</span>
-                      <span className="text-[10px] text-stone-500">Live Telemetry &middot; Amazon Polly Audio Ready</span>
+                      <p className="text-xs text-stone-700 leading-relaxed whitespace-pre-line">
+                        {farmerAdvisory.displayBody}
+                      </p>
+                      <div className="pt-2 border-t border-stone-200 flex items-center justify-between text-[11px] text-emerald-800 font-medium">
+                        <span>Halt window: {farmerAdvisory.haltHours}</span>
+                        <span className="text-[10px] text-stone-500">Live Telemetry &middot; Amazon Polly Audio Ready</span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {/* Action Buttons for WhatsApp & Polly Audio */}
@@ -629,128 +621,143 @@ export default function PersonalizedAlertsScreen() {
                     className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-3 rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     {isPlayingPolly ? <Square size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-                    <span>{isPlayingPolly ? "Pause Voice Advisory" : "Listen in Browser (Polly)"}</span>
+                    <span>{isPlayingPolly ? "Pause Voice Advisory" : `Listen to ${farmerAdvisory.farmerName}'s Voice`}</span>
                   </button>
                 </div>
               </div>
             </Card>
 
             {/* Dispatch Gateway & Amazon Polly Architecture */}
-            <Card className="flex flex-col justify-between">
-              <div>
-                <CardHeader
-                  eyebrow="Gateway Pipeline"
-                  title="WhatsApp &amp; Amazon Polly Pipeline"
-                  detail="Agromet speech synthesis with direct WhatsApp PTT voice delivery"
-                />
+            <Card className="flex flex-col justify-between h-full">
+              <div className="flex-1 flex flex-col justify-between">
+                <div>
+                  <CardHeader
+                    eyebrow="Gateway Pipeline"
+                    title="WhatsApp &amp; Amazon Polly Pipeline"
+                    detail="Agromet speech synthesis with direct WhatsApp PTT voice delivery"
+                  />
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-stone-700 mb-1">
-                      Target Mobile Number (+91)
-                    </label>
-                    <input
-                      type="tel"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="+91 98765 43210"
-                      className="w-full text-xs font-mono px-3 py-2 rounded-lg border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#2e7d32] bg-white"
-                    />
-                    <span className="text-[11px] text-stone-500 mt-1 block">
-                      Subscriber recipient: {activeSubscriber.name} ({activeSubscriber.district})
-                    </span>
-                  </div>
-
-                  {/* Amazon Polly Voice Synthesis Panel & Real Audio Player */}
-                  <div className="p-4 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/60 border border-emerald-300 rounded-2xl shadow-xs space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2.5 h-2.5 rounded-full ${isPlayingPolly ? "bg-emerald-600 animate-ping" : "bg-emerald-600"}`} />
-                        <span className="text-xs font-bold text-emerald-950">Amazon Polly Voice Dispatch</span>
-                      </div>
-                      <span className="text-[10px] font-mono bg-emerald-200/90 text-emerald-900 px-2 py-0.5 rounded-full font-bold">
-                        AWS Polly Neural
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        Target Mobile Number (+91)
+                      </label>
+                      <input
+                        type="tel"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="w-full text-xs font-mono px-3 py-2 rounded-lg border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#2e7d32] bg-white"
+                      />
+                      <span className="text-[11px] text-stone-500 mt-1 block">
+                        Subscriber recipient: {activeSubscriber.name} ({activeSubscriber.district})
                       </span>
                     </div>
 
-                    <p className="text-[11px] text-stone-600 leading-relaxed">
-                      <strong>Why Polly in KisanGuard?</strong> Smallholder farmers in dryland areas need spoken voice advisories rather than raw charts. Amazon Polly converts risk alerts into vernacular voice notes streamed directly via WhatsApp and web audio.
-                    </p>
-
-                    {/* Audible Real Polly Player */}
-                    <div className="p-3 bg-white rounded-xl border border-emerald-200/80 shadow-xs flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={togglePollyAudio}
-                        className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold transition shadow-md cursor-pointer shrink-0 ${
-                          isPlayingPolly ? "bg-red-600 hover:bg-red-700" : "bg-[#2e7d32] hover:bg-[#256628]"
-                        }`}
-                        aria-label={isPlayingPolly ? "Pause Voice Advisory" : "Play Voice Advisory"}
-                      >
-                        {isPlayingPolly ? (
-                          <Square size={13} fill="currentColor" />
-                        ) : (
-                          <Play size={16} fill="currentColor" className="ml-0.5" />
-                        )}
-                      </button>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-stone-800 truncate">
-                            {preferences.language === "EN" ? "Kajal (Indian English Neural)" : "Aditi (Hindi / Regional Neural)"}
-                          </span>
-                          <span className="font-mono text-[11px] text-emerald-800 font-bold">
-                            {isPlayingPolly
-                              ? `0:${Math.floor(pollyCurrentTime).toString().padStart(2, "0")} / 0:${Math.floor(pollyDuration || 18).toString().padStart(2, "0")}`
-                              : "0:00 / 0:18"}
-                          </span>
+                    {/* Amazon Polly Voice Synthesis Panel & Real Audio Player */}
+                    <div className="p-4 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/60 border border-emerald-300 rounded-2xl shadow-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${isPlayingPolly ? "bg-emerald-600 animate-ping" : "bg-emerald-600"}`} />
+                          <span className="text-xs font-bold text-emerald-950">Amazon Polly Voice Dispatch</span>
                         </div>
-
-                        {/* Progress track */}
-                        <div className="w-full bg-stone-100 rounded-full h-1.5 mt-1.5 overflow-hidden border border-stone-200">
-                          <div
-                            className="bg-emerald-600 h-full rounded-full transition-all duration-150"
-                            style={{ width: `${pollyProgress}%` }}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between text-[10px] text-stone-500 mt-1">
-                          <span>Carrier: 22,050 Hz MP3</span>
-                          <span className={isPlayingPolly ? "text-emerald-700 font-bold" : ""}>
-                            {isPlayingPolly ? "🔊 Speaking Now..." : "Click Play to Test Voice"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 text-xs space-y-2">
-                    <div className="flex items-center justify-between font-bold text-stone-800">
-                      <span>Delivery Pipeline</span>
-                      <span className="text-emerald-700">Meta WhatsApp Cloud API</span>
-                    </div>
-                    <div className="flex items-center justify-between text-stone-600">
-                      <span>Voice Synthesis</span>
-                      <span>Amazon Polly Neural (22,050 Hz MP3)</span>
-                    </div>
-                  </div>
-
-                  {deliveryReceipt && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs space-y-1">
-                      <div className="flex items-center justify-between font-bold text-emerald-900">
-                        <span>✓ Verified WhatsApp &amp; Audio Receipt</span>
-                        <span className="font-mono text-[10px] bg-emerald-200 px-1.5 py-0.5 rounded text-emerald-800">
-                          {deliveryReceipt.messageId}
+                        <span className="text-[10px] font-mono bg-emerald-200/90 text-emerald-900 px-2 py-0.5 rounded-full font-bold">
+                          AWS Polly Neural
                         </span>
                       </div>
-                      <p className="text-[11px] text-emerald-800">
-                        Gateway: {deliveryReceipt.gateway} &middot; Chars: {deliveryReceipt.charCount}
+
+                      <p className="text-[11px] text-stone-600 leading-relaxed">
+                        <strong>Personalized for {farmerAdvisory.farmerName}:</strong> Specific to {farmerAdvisory.village}, {farmerAdvisory.district} and {farmerAdvisory.cropName}. Amazon Polly synthesizes authentic regional guidance for field laborers.
                       </p>
-                      <p className="text-[10px] text-stone-500 font-mono">
-                        Dispatched at: {deliveryReceipt.deliveredAt}
-                      </p>
+
+                      {/* Audible Real Polly Player */}
+                      <div className="p-3 bg-white rounded-xl border border-emerald-200/80 shadow-xs flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={togglePollyAudio}
+                          className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold transition shadow-md cursor-pointer shrink-0 ${
+                            isPlayingPolly ? "bg-red-600 hover:bg-red-700" : "bg-[#2e7d32] hover:bg-[#256628]"
+                          }`}
+                          aria-label={isPlayingPolly ? "Pause Voice Advisory" : "Play Voice Advisory"}
+                        >
+                          {isPlayingPolly ? (
+                            <Square size={13} fill="currentColor" />
+                          ) : (
+                            <Play size={16} fill="currentColor" className="ml-0.5" />
+                          )}
+                        </button>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-stone-800 truncate">
+                              {farmerAdvisory.voiceName} ({farmerAdvisory.farmerName})
+                            </span>
+                            <span className="font-mono text-[11px] text-emerald-800 font-bold">
+                              {isPlayingPolly
+                                ? `0:${Math.floor(pollyCurrentTime).toString().padStart(2, "0")} / 0:${Math.round(pollyDuration || farmerAdvisory.suggestedDuration).toString().padStart(2, "0")}`
+                                : `0:00 / 0:${Math.round(farmerAdvisory.suggestedDuration)}`}
+                            </span>
+                          </div>
+
+                          {/* Progress track */}
+                          <div className="w-full bg-stone-100 rounded-full h-1.5 mt-1.5 overflow-hidden border border-stone-200">
+                            <div
+                              className="bg-emerald-600 h-full rounded-full transition-all duration-150"
+                              style={{ width: `${pollyProgress}%` }}
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] text-stone-500 mt-1">
+                            <span>Target: {farmerAdvisory.village}, {farmerAdvisory.district}</span>
+                            <span className={isPlayingPolly ? "text-emerald-700 font-bold" : ""}>
+                              {isPlayingPolly ? "🔊 Speaking Now..." : "Click Play to Test Voice"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Spoken Text Script Preview */}
+                      <div className="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/60 text-[11px] text-stone-700">
+                        <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide mb-1 flex items-center justify-between">
+                          <span>Personalized Polly Script</span>
+                          <span className="font-mono text-[9px] bg-emerald-200 px-1 py-0.2 rounded font-semibold text-emerald-900">
+                            {farmerAdvisory.voiceLangCode}
+                          </span>
+                        </div>
+                        <p className="italic leading-relaxed text-stone-800">
+                          &ldquo;{farmerAdvisory.spokenText}&rdquo;
+                        </p>
+                      </div>
                     </div>
-                  )}
+
+                    <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 text-xs space-y-2">
+                      <div className="flex items-center justify-between font-bold text-stone-800">
+                        <span>Delivery Pipeline</span>
+                        <span className="text-emerald-700">Meta WhatsApp Cloud API</span>
+                      </div>
+                      <div className="flex items-center justify-between text-stone-600">
+                        <span>Voice Synthesis</span>
+                        <span>Amazon Polly Neural (22,050 Hz MP3)</span>
+                      </div>
+                    </div>
+
+                    {deliveryReceipt && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs space-y-1">
+                        <div className="flex items-center justify-between font-bold text-emerald-900">
+                          <span>✓ Verified WhatsApp &amp; Audio Receipt</span>
+                          <span className="font-mono text-[10px] bg-emerald-200 px-1.5 py-0.5 rounded text-emerald-800">
+                            {deliveryReceipt.messageId}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-emerald-800">
+                          Gateway: {deliveryReceipt.gateway} &middot; Chars: {deliveryReceipt.charCount}
+                        </p>
+                        <p className="text-[10px] text-stone-500 font-mono">
+                          Dispatched at: {deliveryReceipt.deliveredAt}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

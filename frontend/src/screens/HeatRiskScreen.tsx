@@ -614,8 +614,6 @@ export default function HeatRiskScreen() {
               </tbody>
             </table>
           </div>
-
-          <SimulatedNotice />
         </div>
       </RevealSection>
     </FeatureShell>
