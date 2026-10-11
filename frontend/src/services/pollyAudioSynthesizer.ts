@@ -26,7 +26,16 @@ export interface LiveSynthesisRequest {
   soilType?: string
   irrigationMethod?: string
   wbgt?: number
+  psi?: number
+  cdhi?: number
+  ndvi?: number
+  heatStressDays?: number
+  soilMoisture?: string
+  waterDeficitMm?: string
+  yieldLossRisk?: string
+  mitigatedYieldLoss?: string
   haltHours?: string
+  sprayDirective?: string
   severity?: "red" | "caution"
   language?: string
 }
@@ -43,11 +52,21 @@ export interface LiveSynthesisResponse {
   estimatedDuration: number
   metrics?: {
     wbgt?: number
+    psi?: number
+    cdhi?: number
+    ndvi?: number
+    heatStressDays?: number
+    soilMoisture?: string
+    waterDeficitMm?: string
+    yieldLossRisk?: string
+    mitigatedLoss?: string
     severity?: string
     crop?: string
     stage?: string
     soil?: string
     irrigation?: string
+    haltHours?: string
+    sprayDirective?: string
   }
   meta?: {
     model: string
