@@ -264,12 +264,21 @@ function safeWindow(
   if (bestLength === cool.length) return { from: 0, to: 23 }
   if (bestStart < 0 || bestLength < 2) return { from: 4, to: 7 }
 
+  function parseTrendHour(timeStr: string): number {
+    if (!timeStr) return 0
+    const match = String(timeStr).match(/^(\d{1,2}):/)
+    if (match) return parseInt(match[1], 10)
+    try {
+      const d = new Date(timeStr)
+      if (!isNaN(d.getTime())) return d.getHours()
+    } catch {}
+    return 0
+  }
+
   // The trend starts 23 hours ago, so index 0 is not midnight — read the real
   // clock off the timestamps instead of assuming the array is day-aligned.
-  const from = new Date(trend[bestStart].time).getHours()
-  const to = new Date(
-    trend[(bestStart + bestLength) % cool.length].time,
-  ).getHours()
+  const from = parseTrendHour(trend[bestStart].time)
+  const to = parseTrendHour(trend[(bestStart + bestLength) % cool.length].time)
   return { from, to }
 }
 
