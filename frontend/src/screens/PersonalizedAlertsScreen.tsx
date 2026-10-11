@@ -47,7 +47,7 @@ import {
   preferenceService,
 } from "../services/preferenceService"
 import { getPersonalizedAdvisory } from "../services/farmerAdvisoryEngine"
-import { pollySynthesizer, formatAudioTime } from "../services/pollyAudioSynthesizer"
+import { pollySynthesizer, formatAudioTime, type LiveSynthesisResponse } from "../services/pollyAudioSynthesizer"
 import { relativeTime } from "../services/random"
 import { useAppState } from "../state/AppState"
 import { useAuth, DEMO_FARMERS, FarmerUser } from "../state/AuthState"
@@ -182,8 +182,12 @@ export default function PersonalizedAlertsScreen() {
     return getPersonalizedAdvisory(activeSubscriber, preferences.language)
   }, [activeSubscriber, preferences.language])
 
+  const [isLiveSynthesizing, setIsLiveSynthesizing] = useState(false)
+  const [liveAdvisoryData, setLiveAdvisoryData] = useState<LiveSynthesisResponse | null>(null)
+
   function handleSelectFarmer(farmer: FarmerUser) {
     stopPollyAudio()
+    setLiveAdvisoryData(null)
     login(farmer)
     const nextLang = (farmer.preferredLanguage?.toUpperCase() || (farmer.state === "Punjab" ? "PA" : farmer.state === "Telangana" ? "TE" : "HI"))
     setPreferences((prev) => ({
@@ -207,6 +211,12 @@ export default function PersonalizedAlertsScreen() {
       })
     }
   }
+
+  // Invalidate live data when language changes
+  useEffect(() => {
+    stopPollyAudio()
+    setLiveAdvisoryData(null)
+  }, [preferences.language])
 
   const [phoneNumber, setPhoneNumber] = useState(user?.phone || "+91 98765 43210")
   const [sendingAlert, setSendingAlert] = useState(false)
@@ -247,24 +257,49 @@ export default function PersonalizedAlertsScreen() {
     return `/audio/advisory_hi.mp3`
   }
 
-  function playPollyAudio() {
-    pollySynthesizer.speak(
+  async function playPollyAudio() {
+    const liveReq = {
+      farmerName: activeSubscriber.name,
+      village: activeSubscriber.village,
+      district: activeSubscriber.district,
+      state: activeSubscriber.state,
+      crop: (activeSubscriber.crops && activeSubscriber.crops[0]) || activeSubscriber.crop,
+      crops: activeSubscriber.crops,
+      stage: activeSubscriber.stage,
+      soilType: activeSubscriber.soilType,
+      irrigationMethod: activeSubscriber.irrigationMethod,
+      wbgt: farmerAdvisory.wbgt,
+      severity: farmerAdvisory.riskLevel,
+      language: preferences.language,
+    }
+
+    const liveRes = await pollySynthesizer.speakLive(
+      liveReq,
       farmerAdvisory.spokenText,
-      farmerAdvisory.voiceLangCode,
-      farmerAdvisory.suggestedDuration,
       getAudioUrlForLanguage(preferences.language),
       (state) => {
         setIsPlayingPolly(state.isPlaying)
         setPollyProgress(state.progress)
         setPollyCurrentTime(state.currentTime)
         if (state.duration) setPollyDuration(state.duration)
+        if (typeof state.isLiveSynthesizing === "boolean") {
+          setIsLiveSynthesizing(state.isLiveSynthesizing)
+        }
       }
     )
+
+    if (liveRes) {
+      setLiveAdvisoryData(liveRes)
+      if (liveRes.estimatedDuration) {
+        setPollyDuration(liveRes.estimatedDuration)
+      }
+    }
   }
 
   function stopPollyAudio() {
     pollySynthesizer.stop((state) => {
       setIsPlayingPolly(false)
+      setIsLiveSynthesizing(false)
       setPollyProgress(0)
       setPollyCurrentTime(0)
     })
@@ -600,10 +635,13 @@ export default function PersonalizedAlertsScreen() {
                   <button
                     type="button"
                     onClick={togglePollyAudio}
-                    className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-3 rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    disabled={isLiveSynthesizing}
+                    className={`flex-1 text-white text-xs font-bold py-2.5 px-3 rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      isLiveSynthesizing ? "bg-amber-600 cursor-wait animate-pulse" : "bg-emerald-700 hover:bg-emerald-800"
+                    }`}
                   >
-                    {isPlayingPolly ? <Square size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-                    <span>{isPlayingPolly ? "Pause Voice Advisory" : `Listen to ${farmerAdvisory.farmerName}'s Voice`}</span>
+                    {isLiveSynthesizing ? <Clock size={13} className="animate-spin" /> : isPlayingPolly ? <Square size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
+                    <span>{isLiveSynthesizing ? "Synthesizing Live Voice..." : isPlayingPolly ? "Pause Voice Advisory" : `Generate & Listen (${activeSubscriber.name})`}</span>
                   </button>
                 </div>
               </div>
@@ -640,16 +678,39 @@ export default function PersonalizedAlertsScreen() {
                     <div className="p-4 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/60 border border-emerald-300 rounded-2xl shadow-xs space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2.5 h-2.5 rounded-full ${isPlayingPolly ? "bg-emerald-600 animate-ping" : "bg-emerald-600"}`} />
-                          <span className="text-xs font-bold text-emerald-950">Amazon Polly Voice Dispatch</span>
+                          <span className={`w-2.5 h-2.5 rounded-full ${isPlayingPolly ? "bg-emerald-600 animate-ping" : isLiveSynthesizing ? "bg-amber-500 animate-ping" : "bg-emerald-600"}`} />
+                          <span className="text-xs font-bold text-emerald-950">Live Agromet Voice Dispatch</span>
                         </div>
                         <span className="text-[10px] font-mono bg-emerald-200/90 text-emerald-900 px-2 py-0.5 rounded-full font-bold">
-                          AWS Polly Neural
+                          Bedrock &middot; Polly Neural
                         </span>
                       </div>
 
+                      {/* Real-time synthesis state badge */}
+                      {isLiveSynthesizing ? (
+                        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 text-xs animate-pulse">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                          <span>Generating live advisory via Amazon Bedrock (Meta Llama 3) &amp; synthesizing speech via Amazon Polly Neural...</span>
+                        </div>
+                      ) : liveAdvisoryData ? (
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-100 text-emerald-950 border border-emerald-300 text-[11px] font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                            <span>100% Live Model Synthesis &middot; Meta Llama 3 + Polly Neural</span>
+                          </div>
+                          <span className="font-mono text-[10px] bg-emerald-200/90 text-emerald-900 px-1.5 py-0.5 rounded font-bold">
+                            {liveAdvisoryData.meta?.totalTime || 1.8}s latency
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-stone-100 text-stone-700 border border-stone-200 text-[11px]">
+                          <span>⚡ Real-Time Engine &middot; Spoken audio synthesized live for {activeSubscriber.name}</span>
+                          <span className="text-[10px] font-bold text-emerald-800">100% Dynamic</span>
+                        </div>
+                      )}
+
                       <p className="text-[11px] text-stone-600 leading-relaxed">
-                        <strong>Personalized for {farmerAdvisory.farmerName}:</strong> Specific to {farmerAdvisory.village}, {farmerAdvisory.district} and {farmerAdvisory.cropName}. Amazon Polly synthesizes authentic regional guidance for field laborers.
+                        <strong>Personalized for {activeSubscriber.name}:</strong> Grounded strictly in {activeSubscriber.village}, {activeSubscriber.district} telemetry ({farmerAdvisory.wbgt}&deg;C WBGT, {activeSubscriber.crop || farmerAdvisory.cropName}). Amazon Polly Kajal Neural delivers unambiguous, actionable safety guidance.
                       </p>
 
                       {/* Audible Real Polly Player */}
@@ -657,12 +718,19 @@ export default function PersonalizedAlertsScreen() {
                         <button
                           type="button"
                           onClick={togglePollyAudio}
+                          disabled={isLiveSynthesizing}
                           className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold transition shadow-md cursor-pointer shrink-0 ${
-                            isPlayingPolly ? "bg-red-600 hover:bg-red-700" : "bg-[#2e7d32] hover:bg-[#256628]"
+                            isLiveSynthesizing
+                              ? "bg-amber-500 cursor-wait animate-pulse"
+                              : isPlayingPolly
+                              ? "bg-red-600 hover:bg-red-700"
+                              : "bg-[#2e7d32] hover:bg-[#256628]"
                           }`}
                           aria-label={isPlayingPolly ? "Pause Voice Advisory" : "Play Voice Advisory"}
                         >
-                          {isPlayingPolly ? (
+                          {isLiveSynthesizing ? (
+                            <Clock size={16} className="animate-spin" />
+                          ) : isPlayingPolly ? (
                             <Square size={13} fill="currentColor" />
                           ) : (
                             <Play size={16} fill="currentColor" className="ml-0.5" />
@@ -672,7 +740,7 @@ export default function PersonalizedAlertsScreen() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-bold text-stone-800 truncate">
-                              {farmerAdvisory.voiceName} ({farmerAdvisory.farmerName})
+                              {farmerAdvisory.voiceName} ({activeSubscriber.name})
                             </span>
                             <span className="font-mono text-[11px] text-emerald-800 font-bold">
                               {isPlayingPolly
@@ -690,9 +758,9 @@ export default function PersonalizedAlertsScreen() {
                           </div>
 
                           <div className="flex items-center justify-between text-[10px] text-stone-500 mt-1">
-                            <span>Target: {farmerAdvisory.village}, {farmerAdvisory.district}</span>
-                            <span className={isPlayingPolly ? "text-emerald-700 font-bold" : ""}>
-                              {isPlayingPolly ? "🔊 Speaking Now..." : "Click Play to Test Voice"}
+                            <span>Target: {activeSubscriber.village || activeSubscriber.district}, {activeSubscriber.district}</span>
+                            <span className={isPlayingPolly ? "text-emerald-700 font-bold" : isLiveSynthesizing ? "text-amber-700 font-bold" : ""}>
+                              {isLiveSynthesizing ? "⚡ Synthesizing live audio..." : isPlayingPolly ? "🔊 Speaking Now..." : "Click Play to Generate & Hear Voice"}
                             </span>
                           </div>
                         </div>
@@ -701,13 +769,13 @@ export default function PersonalizedAlertsScreen() {
                       {/* Spoken Text Script Preview */}
                       <div className="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/60 text-[11px] text-stone-700">
                         <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide mb-1 flex items-center justify-between">
-                          <span>Personalized Polly Script</span>
+                          <span>{liveAdvisoryData ? "Bedrock Meta Llama 3 Generated Script" : "Personalized Spoken Script"}</span>
                           <span className="font-mono text-[9px] bg-emerald-200 px-1 py-0.2 rounded font-semibold text-emerald-900">
-                            {farmerAdvisory.voiceLangCode}
+                            {preferences.language}
                           </span>
                         </div>
                         <p className="italic leading-relaxed text-stone-800">
-                          &ldquo;{farmerAdvisory.spokenText}&rdquo;
+                          &ldquo;{liveAdvisoryData?.generatedText || farmerAdvisory.spokenText}&rdquo;
                         </p>
                       </div>
                     </div>

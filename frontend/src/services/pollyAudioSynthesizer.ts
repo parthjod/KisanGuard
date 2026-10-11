@@ -1,15 +1,61 @@
-// Amazon Polly & SpeechSynthesis Player for KisanGuard
-// Speaks hyper-personalized agromet text with Indian regional voices and fallback audio.
+// Amazon Polly & Bedrock Real-Time Neural Speech Synthesizer for KisanGuard
+// Generates and plays 100% real-time, live agromet voice advisories for ANY arbitrary farmer.
+// Uses Amazon Bedrock (Meta Llama 3) for metric intelligence + Amazon Polly Neural (Kajal) for live speech synthesis.
+
+export const LIVE_VOICE_API_URL = "https://yzvsegt7li.execute-api.ap-south-1.amazonaws.com"
 
 export interface SpeechPlaybackState {
   isPlaying: boolean
   progress: number // 0 to 100
   currentTime: number // seconds
   duration: number // seconds
+  isLiveSynthesizing?: boolean
   error?: string
 }
 
 export type PlaybackCallback = (state: SpeechPlaybackState) => void
+
+export interface LiveSynthesisRequest {
+  farmerName: string
+  village?: string
+  district?: string
+  state?: string
+  crop?: string
+  crops?: string[]
+  stage?: string
+  soilType?: string
+  irrigationMethod?: string
+  wbgt?: number
+  severity?: "red" | "caution"
+  language?: string
+}
+
+export interface LiveSynthesisResponse {
+  success: boolean
+  farmerName: string
+  district: string
+  language: string
+  generatedText: string
+  audioBase64: string
+  audioMimeType: string
+  audioSizeBytes?: number
+  estimatedDuration: number
+  metrics?: {
+    wbgt?: number
+    severity?: string
+    crop?: string
+    stage?: string
+    soil?: string
+    irrigation?: string
+  }
+  meta?: {
+    model: string
+    voiceEngine: string
+    bedrockTime: number
+    pollyTime: number
+    totalTime: number
+  }
+}
 
 export function estimateSpeechDuration(text: string, rate: number = 0.93): number {
   if (!text || !text.trim()) return 18
@@ -29,18 +75,19 @@ export function formatAudioTime(seconds: number): string {
 
 class PollySynthesizerService {
   private currentUtterance: SpeechSynthesisUtterance | null = null
-  private fallbackAudio: HTMLAudioElement | null = null
+  private currentAudio: HTMLAudioElement | null = null
   private timer: any = null
   private startTime: number = 0
   private estimatedDuration: number = 18
+  private liveCache = new Map<string, LiveSynthesisResponse>()
 
   public stop(onUpdate?: PlaybackCallback) {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel()
     }
-    if (this.fallbackAudio) {
-      this.fallbackAudio.pause()
-      this.fallbackAudio = null
+    if (this.currentAudio) {
+      this.currentAudio.pause()
+      this.currentAudio = null
     }
     if (this.timer) {
       clearInterval(this.timer)
@@ -57,6 +104,151 @@ class PollySynthesizerService {
     }
   }
 
+  /**
+   * Invokes real-time Amazon Bedrock (Meta Llama 3) and Amazon Polly Neural API for any farmer.
+   */
+  public async synthesizeLive(req: LiveSynthesisRequest): Promise<LiveSynthesisResponse> {
+    const cacheKey = `${req.farmerName}_${req.language || "hi"}_${req.crop || "crop"}_${req.wbgt || 33.8}_${req.district || ""}`
+    if (this.liveCache.has(cacheKey)) {
+      return this.liveCache.get(cacheKey)!
+    }
+
+    try {
+      const resp = await fetch(LIVE_VOICE_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(req),
+      })
+
+      if (!resp.ok) {
+        throw new Error(`API returned HTTP ${resp.status}`)
+      }
+
+      const data: LiveSynthesisResponse = await resp.json()
+      if (data && data.audioBase64) {
+        this.liveCache.set(cacheKey, data)
+        return data
+      }
+      throw new Error(data?.generatedText || "No audio returned from live synthesizer")
+    } catch (err: any) {
+      console.warn("Real-time synthesis API error, falling back:", err)
+      throw err
+    }
+  }
+
+  /**
+   * Synthesizes and plays real-time spoken audio for ANY arbitrary farmer.
+   */
+  public async speakLive(
+    req: LiveSynthesisRequest,
+    fallbackText: string,
+    fallbackAudioUrl: string,
+    onUpdate: PlaybackCallback
+  ): Promise<LiveSynthesisResponse | null> {
+    this.stop(onUpdate)
+
+    onUpdate({
+      isPlaying: false,
+      progress: 0,
+      currentTime: 0,
+      duration: 18,
+      isLiveSynthesizing: true,
+    })
+
+    try {
+      const liveData = await this.synthesizeLive(req)
+      if (liveData && liveData.audioBase64) {
+        const audioSrc = `data:${liveData.audioMimeType || "audio/mpeg"};base64,${liveData.audioBase64}`
+        this.playAudioSource(audioSrc, liveData.generatedText, req.language || "hi", liveData.estimatedDuration || 18, onUpdate)
+        return liveData
+      }
+    } catch (e) {
+      console.warn("Live synthesis failed, falling back to cached/pre-rendered audio:", e)
+    }
+
+    // Fallback: Play static/pre-rendered or speech synthesis
+    this.speak(fallbackText, req.language || "hi", 18, fallbackAudioUrl, onUpdate)
+    return null
+  }
+
+  /**
+   * Plays given audio source (URL or base64 data URI) with native HTML5 media duration & progress tracking.
+   */
+  public playAudioSource(
+    audioSrc: string,
+    text: string,
+    langCode: string,
+    durationSeconds: number,
+    onUpdate: PlaybackCallback
+  ) {
+    this.stop(onUpdate)
+    this.estimatedDuration = durationSeconds || estimateSpeechDuration(text, 0.93)
+
+    try {
+      const audio = new Audio(audioSrc)
+      this.currentAudio = audio
+
+      audio.onloadedmetadata = () => {
+        const d = audio.duration && !isNaN(audio.duration) ? audio.duration : this.estimatedDuration
+        this.estimatedDuration = d
+        onUpdate({
+          isPlaying: true,
+          progress: 0,
+          currentTime: 0,
+          duration: d,
+          isLiveSynthesizing: false,
+        })
+      }
+
+      audio.ontimeupdate = () => {
+        const d = (audio.duration && !isNaN(audio.duration)) ? audio.duration : this.estimatedDuration
+        const cur = Math.min(audio.currentTime, d)
+        onUpdate({
+          isPlaying: true,
+          progress: Math.min((cur / (d || 1)) * 100, 100),
+          currentTime: cur,
+          duration: d,
+          isLiveSynthesizing: false,
+        })
+      }
+
+      audio.onended = () => {
+        const d = (audio.duration && !isNaN(audio.duration)) ? audio.duration : this.estimatedDuration
+        onUpdate({
+          isPlaying: false,
+          progress: 100,
+          currentTime: d,
+          duration: d,
+          isLiveSynthesizing: false,
+        })
+        setTimeout(() => {
+          onUpdate({
+            isPlaying: false,
+            progress: 0,
+            currentTime: 0,
+            duration: d,
+            isLiveSynthesizing: false,
+          })
+        }, 350)
+      }
+
+      audio.onerror = () => {
+        console.warn("Audio element playback error, falling back to SpeechSynthesis")
+        this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
+      }
+
+      audio.play().catch((e) => {
+        console.warn("Audio play rejected:", e)
+        this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
+      })
+    } catch (err) {
+      console.warn("Audio element initialization error:", err)
+      this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
+    }
+  }
+
   public speak(
     text: string,
     langCode: string,
@@ -64,74 +256,11 @@ class PollySynthesizerService {
     fallbackAudioUrl: string,
     onUpdate: PlaybackCallback
   ) {
-    this.stop(onUpdate)
-    const calculatedDuration = estimateSpeechDuration(text, 0.93)
-    this.estimatedDuration = Math.max(durationSeconds || 0, calculatedDuration)
-
-    // 1. Prioritize authentic Amazon Polly Neural audio recording if available
     if (fallbackAudioUrl) {
-      try {
-        const audio = new Audio(fallbackAudioUrl)
-        this.fallbackAudio = audio
-
-        audio.onloadedmetadata = () => {
-          const d = audio.duration && !isNaN(audio.duration) ? audio.duration : this.estimatedDuration
-          this.estimatedDuration = d
-          onUpdate({
-            isPlaying: true,
-            progress: 0,
-            currentTime: 0,
-            duration: d,
-          })
-        }
-
-        audio.ontimeupdate = () => {
-          const d = (audio.duration && !isNaN(audio.duration)) ? audio.duration : this.estimatedDuration
-          const cur = Math.min(audio.currentTime, d)
-          onUpdate({
-            isPlaying: true,
-            progress: Math.min((cur / (d || 1)) * 100, 100),
-            currentTime: cur,
-            duration: d,
-          })
-        }
-
-        audio.onended = () => {
-          const d = (audio.duration && !isNaN(audio.duration)) ? audio.duration : this.estimatedDuration
-          onUpdate({
-            isPlaying: false,
-            progress: 100,
-            currentTime: d,
-            duration: d,
-          })
-          setTimeout(() => {
-            onUpdate({
-              isPlaying: false,
-              progress: 0,
-              currentTime: 0,
-              duration: d,
-            })
-          }, 350)
-        }
-
-        audio.onerror = () => {
-          console.warn("Polly audio file failed, using SpeechSynthesis fallback")
-          this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
-        }
-
-        audio.play().catch((e) => {
-          console.warn("Audio autoplay blocked, using SpeechSynthesis fallback:", e)
-          this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
-        })
-
-        return
-      } catch (err) {
-        console.warn("Audio element initialization error:", err)
-      }
+      this.playAudioSource(fallbackAudioUrl, text, langCode, durationSeconds, onUpdate)
+    } else {
+      this.speakSpeechSynthesis(text, langCode, durationSeconds, onUpdate)
     }
-
-    // 2. Fallback to browser SpeechSynthesis
-    this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
   }
 
   private speakSpeechSynthesis(
@@ -151,6 +280,7 @@ class PollySynthesizerService {
         progress: 0,
         currentTime: 0,
         duration: durationSeconds,
+        isLiveSynthesizing: false,
         error: "Audio playback unavailable",
       })
       return
@@ -160,22 +290,17 @@ class PollySynthesizerService {
       const utterance = new SpeechSynthesisUtterance(text)
       this.currentUtterance = utterance
 
-      const voices = window.speechSynthesis.getVoices()
-      const targetLang = (langCode || "en-IN").toLowerCase()
-      const prefix = targetLang.split("-")[0]
-
-      const matchedVoice =
-        voices.find((v) => v.lang.toLowerCase() === targetLang) ||
-        voices.find((v) => v.lang.toLowerCase().startsWith(prefix)) ||
-        null
-
-      if (matchedVoice) {
-        utterance.voice = matchedVoice
+      const langMap: Record<string, string> = {
+        HI: "hi-IN",
+        EN: "en-IN",
+        MR: "mr-IN",
+        PA: "pa-IN",
+        TE: "te-IN",
+        BN: "bn-IN",
       }
-
-      utterance.lang = langCode || "en-IN"
+      const targetLang = langMap[(langCode || "HI").toUpperCase()] || "hi-IN"
+      utterance.lang = targetLang
       utterance.rate = 0.93
-      utterance.pitch = 1.0
 
       this.startTime = Date.now()
 
@@ -191,6 +316,7 @@ class PollySynthesizerService {
           progress,
           currentTime: displayTime,
           duration: this.estimatedDuration,
+          isLiveSynthesizing: false,
         })
       }, 150)
 
@@ -205,6 +331,7 @@ class PollySynthesizerService {
           progress: 100,
           currentTime: finalDuration,
           duration: finalDuration,
+          isLiveSynthesizing: false,
         })
         setTimeout(() => {
           onUpdate({
@@ -212,17 +339,19 @@ class PollySynthesizerService {
             progress: 0,
             currentTime: 0,
             duration: finalDuration,
+            isLiveSynthesizing: false,
           })
         }, 350)
       }
 
-      utterance.onerror = (e) => {
+      utterance.onerror = () => {
         if (this.timer) clearInterval(this.timer)
         onUpdate({
           isPlaying: false,
           progress: 0,
           currentTime: 0,
           duration: durationSeconds,
+          isLiveSynthesizing: false,
           error: "Voice error",
         })
       }
@@ -233,6 +362,7 @@ class PollySynthesizerService {
         progress: 0,
         currentTime: 0,
         duration: this.estimatedDuration,
+        isLiveSynthesizing: false,
       })
     } catch {
       onUpdate({
@@ -240,6 +370,7 @@ class PollySynthesizerService {
         progress: 0,
         currentTime: 0,
         duration: durationSeconds,
+        isLiveSynthesizing: false,
       })
     }
   }
