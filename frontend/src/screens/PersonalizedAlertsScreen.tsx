@@ -97,7 +97,6 @@ export default function PersonalizedAlertsScreen() {
   const { preferences, setPreferences, setPersonaId, persona, setLocation } = useAppState()
   const { user, login, allFarmers } = useAuth()
   const [channel, setChannel] = useState<AlertChannel>("whatsapp")
-  const [dispatchedNotice, setDispatchedNotice] = useState<string | null>(null)
 
   // Derive active subscriber dynamically from logged-in user or active persona
   const activeSubscriber: Persona = useMemo(() => {
@@ -312,13 +311,8 @@ export default function PersonalizedAlertsScreen() {
         activeMsg,
       )
       setDeliveryReceipt(receipt)
-      setDispatchedNotice(
-        `✓ Live agromet alert dispatched via ${channel.toUpperCase()} to ${phoneNumber} (${receipt.gateway}) · ID: ${receipt.messageId}`
-      )
     } catch {
-      setDispatchedNotice(
-        `✓ Alert queued for delivery via ${channel.toUpperCase()} to ${phoneNumber}`
-      )
+      // quiet fallback
     } finally {
       setSendingAlert(false)
     }
@@ -385,45 +379,6 @@ export default function PersonalizedAlertsScreen() {
           </div>
         </div>
       </section>
-
-      {/* DISPATCH SUCCESS NOTICE */}
-      {dispatchedNotice && (
-        <div className="container" style={{ marginTop: "16px" }}>
-          <div
-            style={{
-              padding: "12px 18px",
-              borderRadius: "10px",
-              background: "#eaf5e9",
-              border: "1px solid #7cb366",
-              color: "#1c5123",
-              fontWeight: 600,
-              fontSize: "13px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              boxShadow: "0 4px 14px rgba(40, 80, 25, 0.08)",
-            }}
-          >
-            <span className="flex items-center gap-2">
-              <CheckCircle2 size={16} />
-              {dispatchedNotice}
-            </span>
-            <button
-              type="button"
-              onClick={() => setDispatchedNotice(null)}
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 700,
-                color: "#1c5123",
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* STEP 1: SELECT FARMER PROFILE */}
       <RevealSection className="section kg-section is-white">

@@ -65,167 +65,181 @@ class PollySynthesizerService {
     onUpdate: PlaybackCallback
   ) {
     this.stop(onUpdate)
-    // Compute exact dynamic duration from text to avoid hardcoded mismatch
     const calculatedDuration = estimateSpeechDuration(text, 0.93)
     this.estimatedDuration = Math.max(durationSeconds || 0, calculatedDuration)
 
-    const hasSpeechSynthesis =
-      typeof window !== "undefined" &&
-      "speechSynthesis" in window &&
-      typeof SpeechSynthesisUtterance !== "undefined"
-
-    if (hasSpeechSynthesis) {
+    // 1. Prioritize authentic Amazon Polly Neural audio recording if available
+    if (fallbackAudioUrl) {
       try {
-        const utterance = new SpeechSynthesisUtterance(text)
-        this.currentUtterance = utterance
+        const audio = new Audio(fallbackAudioUrl)
+        this.fallbackAudio = audio
 
-        // Choose appropriate voice
-        const voices = window.speechSynthesis.getVoices()
-        const targetLang = (langCode || "en-IN").toLowerCase()
-        const prefix = targetLang.split("-")[0]
-
-        // Find match in available browser voices
-        const matchedVoice =
-          voices.find((v) => v.lang.toLowerCase() === targetLang) ||
-          voices.find((v) => v.lang.toLowerCase().startsWith(prefix)) ||
-          voices.find((v) => v.lang.toLowerCase().includes("in") || v.name.includes("India")) ||
-          null
-
-        if (matchedVoice) {
-          utterance.voice = matchedVoice
-        }
-
-        utterance.lang = langCode || "en-IN"
-        utterance.rate = 0.93 // Slightly deliberate, clear cadence for agromet instruction
-        utterance.pitch = 1.0
-
-        this.startTime = Date.now()
-
-        // Track progress with interval
-        this.timer = setInterval(() => {
-          const elapsed = (Date.now() - this.startTime) / 1000
-          // Dynamically expand estimatedDuration if voice continues beyond estimate, ensuring currentTime <= duration always
-          if (elapsed >= this.estimatedDuration) {
-            this.estimatedDuration = Math.ceil(elapsed + 1)
-          }
-          const displayTime = Math.min(elapsed, this.estimatedDuration)
-          const progress = Math.min((displayTime / this.estimatedDuration) * 100, 99)
+        audio.onloadedmetadata = () => {
+          const d = audio.duration && !isNaN(audio.duration) ? audio.duration : this.estimatedDuration
+          this.estimatedDuration = d
           onUpdate({
             isPlaying: true,
-            progress,
-            currentTime: displayTime,
-            duration: this.estimatedDuration,
+            progress: 0,
+            currentTime: 0,
+            duration: d,
           })
-        }, 150)
+        }
 
-        utterance.onend = () => {
-          if (this.timer) clearInterval(this.timer)
-          const finalDuration = Math.max(
-            Math.ceil((Date.now() - this.startTime) / 1000),
-            this.estimatedDuration
-          )
+        audio.ontimeupdate = () => {
+          const d = (audio.duration && !isNaN(audio.duration)) ? audio.duration : this.estimatedDuration
+          const cur = Math.min(audio.currentTime, d)
+          onUpdate({
+            isPlaying: true,
+            progress: Math.min((cur / (d || 1)) * 100, 100),
+            currentTime: cur,
+            duration: d,
+          })
+        }
+
+        audio.onended = () => {
+          const d = (audio.duration && !isNaN(audio.duration)) ? audio.duration : this.estimatedDuration
           onUpdate({
             isPlaying: false,
             progress: 100,
-            currentTime: finalDuration,
-            duration: finalDuration,
+            currentTime: d,
+            duration: d,
           })
           setTimeout(() => {
             onUpdate({
               isPlaying: false,
               progress: 0,
               currentTime: 0,
-              duration: finalDuration,
+              duration: d,
             })
-          }, 400)
+          }, 350)
         }
 
-        utterance.onerror = (e) => {
-          console.warn("SpeechSynthesis error, switching to fallback audio:", e)
-          this.playAudioFallback(fallbackAudioUrl, durationSeconds, onUpdate)
+        audio.onerror = () => {
+          console.warn("Polly audio file failed, using SpeechSynthesis fallback")
+          this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
         }
 
-        window.speechSynthesis.speak(utterance)
-        onUpdate({
-          isPlaying: true,
-          progress: 0,
-          currentTime: 0,
-          duration: this.estimatedDuration,
+        audio.play().catch((e) => {
+          console.warn("Audio autoplay blocked, using SpeechSynthesis fallback:", e)
+          this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
         })
+
         return
       } catch (err) {
-        console.warn("SpeechSynthesis exception, using audio fallback:", err)
+        console.warn("Audio element initialization error:", err)
       }
     }
 
-    // Fallback to static audio file if speech synthesis is unavailable
-    this.playAudioFallback(fallbackAudioUrl, durationSeconds, onUpdate)
+    // 2. Fallback to browser SpeechSynthesis
+    this.speakSpeechSynthesis(text, langCode, this.estimatedDuration, onUpdate)
   }
 
-  private playAudioFallback(
-    audioUrl: string,
+  private speakSpeechSynthesis(
+    text: string,
+    langCode: string,
     durationSeconds: number,
     onUpdate: PlaybackCallback
   ) {
+    const hasSpeechSynthesis =
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      typeof SpeechSynthesisUtterance !== "undefined"
+
+    if (!hasSpeechSynthesis) {
+      onUpdate({
+        isPlaying: false,
+        progress: 0,
+        currentTime: 0,
+        duration: durationSeconds,
+        error: "Audio playback unavailable",
+      })
+      return
+    }
+
     try {
-      const audio = new Audio(audioUrl)
-      this.fallbackAudio = audio
+      const utterance = new SpeechSynthesisUtterance(text)
+      this.currentUtterance = utterance
 
-      audio.onloadedmetadata = () => {
-        const d = audio.duration || durationSeconds || 18
-        this.estimatedDuration = d
+      const voices = window.speechSynthesis.getVoices()
+      const targetLang = (langCode || "en-IN").toLowerCase()
+      const prefix = targetLang.split("-")[0]
+
+      const matchedVoice =
+        voices.find((v) => v.lang.toLowerCase() === targetLang) ||
+        voices.find((v) => v.lang.toLowerCase().startsWith(prefix)) ||
+        null
+
+      if (matchedVoice) {
+        utterance.voice = matchedVoice
+      }
+
+      utterance.lang = langCode || "en-IN"
+      utterance.rate = 0.93
+      utterance.pitch = 1.0
+
+      this.startTime = Date.now()
+
+      this.timer = setInterval(() => {
+        const elapsed = (Date.now() - this.startTime) / 1000
+        if (elapsed >= this.estimatedDuration) {
+          this.estimatedDuration = Math.ceil(elapsed + 1)
+        }
+        const displayTime = Math.min(elapsed, this.estimatedDuration)
+        const progress = Math.min((displayTime / this.estimatedDuration) * 100, 99)
         onUpdate({
           isPlaying: true,
-          progress: 0,
-          currentTime: 0,
-          duration: d,
+          progress,
+          currentTime: displayTime,
+          duration: this.estimatedDuration,
         })
-      }
+      }, 150)
 
-      audio.ontimeupdate = () => {
-        const d = audio.duration || this.estimatedDuration || 18
+      utterance.onend = () => {
+        if (this.timer) clearInterval(this.timer)
+        const finalDuration = Math.max(
+          Math.ceil((Date.now() - this.startTime) / 1000),
+          this.estimatedDuration
+        )
         onUpdate({
-          isPlaying: true,
-          progress: (audio.currentTime / d) * 100,
-          currentTime: audio.currentTime,
-          duration: d,
+          isPlaying: false,
+          progress: 100,
+          currentTime: finalDuration,
+          duration: finalDuration,
         })
+        setTimeout(() => {
+          onUpdate({
+            isPlaying: false,
+            progress: 0,
+            currentTime: 0,
+            duration: finalDuration,
+          })
+        }, 350)
       }
 
-      audio.onended = () => {
+      utterance.onerror = (e) => {
+        if (this.timer) clearInterval(this.timer)
         onUpdate({
           isPlaying: false,
           progress: 0,
           currentTime: 0,
-          duration: this.estimatedDuration,
+          duration: durationSeconds,
+          error: "Voice error",
         })
       }
 
-      audio.onerror = () => {
-        onUpdate({
-          isPlaying: false,
-          progress: 0,
-          currentTime: 0,
-          duration: this.estimatedDuration,
-          error: "Unable to play audio",
-        })
-      }
-
-      audio.play().catch((e) => {
-        console.warn("Audio autoplay blocked:", e)
-        onUpdate({
-          isPlaying: false,
-          progress: 0,
-          currentTime: 0,
-          duration: this.estimatedDuration,
-        })
+      window.speechSynthesis.speak(utterance)
+      onUpdate({
+        isPlaying: true,
+        progress: 0,
+        currentTime: 0,
+        duration: this.estimatedDuration,
       })
     } catch {
       onUpdate({
         isPlaying: false,
         progress: 0,
         currentTime: 0,
-        duration: this.estimatedDuration,
+        duration: durationSeconds,
       })
     }
   }
