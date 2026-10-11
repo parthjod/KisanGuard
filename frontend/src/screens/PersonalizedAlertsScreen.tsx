@@ -38,6 +38,9 @@ import { RevealSection, RevealCard } from "../components/Reveal"
 import { useService } from "../hooks/useService"
 import { alertService, type AlertDeliveryReceipt } from "../services/alertService"
 import { heatService } from "../services/heatService"
+import { cropService } from "../services/cropService"
+import { irrigationService } from "../services/irrigationService"
+import { yieldRiskService } from "../services/yieldRiskService"
 import { CROP_LIST, LANGUAGES, LOCATIONS, PERSONAS } from "../services/mockData"
 import {
   buildAdvisoryPreview,
@@ -57,6 +60,7 @@ import type {
   AlertChannel,
   AlertFrequency,
   CropId,
+  CropStage,
   Persona,
 } from "../services/types"
 
@@ -160,6 +164,47 @@ export default function PersonalizedAlertsScreen() {
     ),
     [location.id, location.lat, location.lng, user?.lat, user?.lng]
   )
+  const cropSnapshot = useService(
+    () => cropService.getSnapshot(
+      location.id,
+      (activeSubscriber.crop || "wheat") as CropId,
+      (activeSubscriber.stage || "flowering") as CropStage,
+      user?.lat ?? location.lat,
+      user?.lng ?? location.lng
+    ),
+    [location.id, location.lat, location.lng, user?.lat, user?.lng, activeSubscriber.crop, activeSubscriber.stage]
+  )
+
+  const irrigationRec = useService(
+    async () =>
+      cropSnapshot.data
+        ? irrigationService.getRecommendation(
+            location.id,
+            (activeSubscriber.crop || "wheat") as CropId,
+            (activeSubscriber.stage || "flowering") as CropStage,
+            cropSnapshot.data,
+            activeSubscriber.irrigationMethod?.toLowerCase().includes("drip") ? "drip" : "flood",
+            user?.lat ?? location.lat,
+            user?.lng ?? location.lng
+          )
+        : null,
+    [location.id, location.lat, location.lng, user?.lat, user?.lng, activeSubscriber.crop, activeSubscriber.stage, activeSubscriber.irrigationMethod, cropSnapshot.data]
+  )
+
+  const yieldForecast = useService(
+    async () =>
+      cropSnapshot.data
+        ? yieldRiskService.getForecast(
+            location.id,
+            (activeSubscriber.crop || "wheat") as CropId,
+            (activeSubscriber.stage || "flowering") as CropStage,
+            cropSnapshot.data,
+            user?.lat ?? location.lat,
+            user?.lng ?? location.lng
+          )
+        : null,
+    [location.id, location.lat, location.lng, user?.lat, user?.lng, activeSubscriber.crop, activeSubscriber.stage, cropSnapshot.data]
+  )
 
   useEffect(() => {
     if (!preferences.channels[channel]) {
@@ -188,8 +233,20 @@ export default function PersonalizedAlertsScreen() {
   )
 
   const farmerAdvisory = useMemo(() => {
-    return getPersonalizedAdvisory(activeSubscriber, preferences.language, heatSnapshot.data)
-  }, [activeSubscriber, preferences.language, heatSnapshot.data])
+    return getPersonalizedAdvisory(activeSubscriber, preferences.language, {
+      heatSnapshot: heatSnapshot.data,
+      cropSnapshot: cropSnapshot.data,
+      irrigationRec: irrigationRec.data,
+      yieldForecast: yieldForecast.data,
+    })
+  }, [
+    activeSubscriber,
+    preferences.language,
+    heatSnapshot.data,
+    cropSnapshot.data,
+    irrigationRec.data,
+    yieldForecast.data,
+  ])
 
   const [isLiveSynthesizing, setIsLiveSynthesizing] = useState(false)
   const [liveAdvisoryData, setLiveAdvisoryData] = useState<LiveSynthesisResponse | null>(null)

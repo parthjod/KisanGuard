@@ -69,12 +69,24 @@ export function computeSpeechDuration(text: string): number {
   return Math.max(Math.ceil(Math.max(fromWords, fromChars)), 20)
 }
 
-import type { HeatSnapshot } from "./types"
+import type {
+  HeatSnapshot,
+  CropHealthSnapshot,
+  IrrigationRecommendation,
+  YieldForecast,
+} from "./types"
+
+export interface LiveTelemetryContext {
+  heatSnapshot?: HeatSnapshot | null
+  cropSnapshot?: CropHealthSnapshot | null
+  irrigationRec?: IrrigationRecommendation | null
+  yieldForecast?: YieldForecast | null
+}
 
 export function getPersonalizedAdvisory(
   farmer: FarmerProfile,
   langCode: string = "EN",
-  liveHeatSnapshot?: HeatSnapshot | null
+  liveTelemetry?: LiveTelemetryContext | HeatSnapshot | null
 ): FarmerAdvisory {
   const normLang = (langCode || "EN").toUpperCase()
   const name = farmer.name || "Farmer"
@@ -251,7 +263,17 @@ export function getPersonalizedAdvisory(
     sprayDirective = "Avoid chemical spraying during high daytime temperatures"
   }
 
-  // 1.1 Override microclimate & heat metrics with live snapshot if provided
+  // Extract individual models from liveTelemetry
+  const liveHeatSnapshot = liveTelemetry
+    ? "wbgt" in liveTelemetry
+      ? liveTelemetry
+      : liveTelemetry.heatSnapshot
+    : null
+  const cropSnapshot = liveTelemetry && "cropSnapshot" in liveTelemetry ? liveTelemetry.cropSnapshot : null
+  const irrigationRec = liveTelemetry && "irrigationRec" in liveTelemetry ? liveTelemetry.irrigationRec : null
+  const yieldForecast = liveTelemetry && "yieldForecast" in liveTelemetry ? liveTelemetry.yieldForecast : null
+
+  // 1.1 Override Model 1 (Heat Risk & Thermal Strain) with live heat snapshot
   if (liveHeatSnapshot) {
     wbgt = Number(liveHeatSnapshot.wbgt.toFixed(1))
     psi = liveHeatSnapshot.psi
@@ -269,6 +291,33 @@ export function getPersonalizedAdvisory(
       haltHours = "12:00 PM – 3:00 PM"
     } else {
       haltHours = "None"
+    }
+  }
+
+  // 1.2 Override Model 2 (Crop Health & CDHI) with live crop snapshot
+  if (cropSnapshot) {
+    cdhi = Math.round(cropSnapshot.cdhi)
+    if (cropSnapshot.ndvi) ndvi = Number(cropSnapshot.ndvi.toFixed(2))
+    if (cropSnapshot.heatStressDays !== undefined) heatStressDays = cropSnapshot.heatStressDays
+    if (cropSnapshot.soilMoisturePercent !== undefined) soilMoisture = `${Math.round(cropSnapshot.soilMoisturePercent)}%`
+  }
+
+  // 1.3 Override Model 3 (Smart Irrigation & Soil Balance) with live recommendation
+  if (irrigationRec) {
+    waterDeficitMm = `${Math.round(irrigationRec.depthMm)} mm`
+    if (irrigationRec.window) {
+      irrigationEn = `${irrigationRec.method || "evening drip"} irrigation (${irrigationRec.window.from} – ${irrigationRec.window.to})`
+    }
+  }
+
+  // 1.4 Override Model 4 (Yield Risk Forecaster) with live forecast
+  if (yieldForecast) {
+    yieldLossRisk = `${Math.round(yieldForecast.currentLossProbability)}%`
+    const avoidPct = yieldForecast.action?.expectedLossAvoidancePct || 75
+    const mitigated = Math.max(1, Math.round(yieldForecast.currentLossProbability * (1 - avoidPct / 100)))
+    mitigatedYieldLoss = `<${mitigated}%`
+    if (yieldForecast.action?.title) {
+      sprayDirective = "Halt chemical spraying during peak heat hours to prevent leaf scorch"
     }
   }
 
