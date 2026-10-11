@@ -12,6 +12,8 @@ export interface FarmerAdvisory {
   wbgt: number
   riskLevel: "caution" | "red"
   haltHours: string
+  soilEn: string
+  irrigationEn: string
   spokenText: string
   displayBody: string
   whatsappText: string
@@ -143,6 +145,8 @@ export function getPersonalizedAdvisory(
       wbgt,
       riskLevel,
       haltHours,
+      soilEn,
+      irrigationEn,
       spokenText,
       displayBody,
       whatsappText,
@@ -168,6 +172,8 @@ export function getPersonalizedAdvisory(
       wbgt,
       riskLevel,
       haltHours,
+      soilEn,
+      irrigationEn,
       spokenText,
       displayBody,
       whatsappText,
@@ -193,6 +199,8 @@ export function getPersonalizedAdvisory(
       wbgt,
       riskLevel,
       haltHours,
+      soilEn,
+      irrigationEn,
       spokenText,
       displayBody,
       whatsappText,
@@ -217,6 +225,8 @@ export function getPersonalizedAdvisory(
       wbgt,
       riskLevel,
       haltHours,
+      soilEn,
+      irrigationEn,
       spokenText,
       displayBody,
       whatsappText,
@@ -241,6 +251,8 @@ export function getPersonalizedAdvisory(
       wbgt,
       riskLevel,
       haltHours,
+      soilEn,
+      irrigationEn,
       spokenText,
       displayBody,
       whatsappText,
@@ -251,7 +263,7 @@ export function getPersonalizedAdvisory(
   }
 
   // Default: English (Indian)
-  const spokenText = `Namaste ${name} ji. KisanGuard agromet advisory for ${village}, ${district}. Wet-bulb globe temperature is ${wbgt} degrees Celsius, indicating high thermal stress. For your ${cropEn} at ${stageEn}, halt heavy field labor between ${haltHours}. Apply ${irrigationEn} to preserve root zone moisture and avoid midday spraying.`
+  const spokenText = `Namaste ${name} ji. KisanGuard agromet advisory for ${village}, ${district}. Wet-bulb globe temperature is ${wbgt} degrees Celsius, indicating high thermal stress. For your ${cropEn} at ${stageEn}, halt heavy field labor between ${haltHours}. Apply ${irrigationEn} to preserve root zone moisture on ${soilEn} and avoid midday spraying.`
   const displayBody = `🌾 [KisanGuard Advisory - ${name}]\nLocation: ${village}, ${district} | Crop: ${cropEn} (${stageEn})\nWBGT ${wbgt}°C — High Heat Stress Alert!\n• Halt field labor & spraying between ${haltHours}.\n• Execute ${irrigationEn} to protect crop canopy.\n• Provide hydration breaks for farm labor.`
   const whatsappText = `🌾 *KisanGuard Agromet Voice Advisory*\nFarmer: ${name} (${village}, ${district})\nCrop: ${cropEn}\n\nNamaste ${name} ji! Extreme heat (WBGT ${wbgt}°C) at ${district}. Halt field labor ${haltHours}. Apply ${irrigationEn} to safeguard crop.`
 
@@ -265,6 +277,8 @@ export function getPersonalizedAdvisory(
     wbgt,
     riskLevel,
     haltHours,
+    soilEn,
+    irrigationEn,
     spokenText,
     displayBody,
     whatsappText,

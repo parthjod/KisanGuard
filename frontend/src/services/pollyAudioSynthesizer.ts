@@ -26,6 +26,7 @@ export interface LiveSynthesisRequest {
   soilType?: string
   irrigationMethod?: string
   wbgt?: number
+  haltHours?: string
   severity?: "red" | "caution"
   language?: string
 }
