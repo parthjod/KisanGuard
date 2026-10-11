@@ -37,6 +37,7 @@ import { FeatureShell } from "../components/SiteChrome"
 import { RevealSection, RevealCard } from "../components/Reveal"
 import { useService } from "../hooks/useService"
 import { alertService, type AlertDeliveryReceipt } from "../services/alertService"
+import { heatService } from "../services/heatService"
 import { CROP_LIST, LANGUAGES, LOCATIONS, PERSONAS } from "../services/mockData"
 import {
   buildAdvisoryPreview,
@@ -94,7 +95,7 @@ const ADVISORY_KEYS = [
 
 
 export default function PersonalizedAlertsScreen() {
-  const { preferences, setPreferences, setPersonaId, persona, setLocation } = useAppState()
+  const { preferences, setPreferences, setPersonaId, persona, setLocation, location } = useAppState()
   const { user, login, allFarmers } = useAuth()
   const [channel, setChannel] = useState<AlertChannel>("whatsapp")
 
@@ -151,6 +152,14 @@ export default function PersonalizedAlertsScreen() {
     () => preferenceService.explain(preferences),
     [preferences],
   )
+  const heatSnapshot = useService(
+    () => heatService.getSnapshot(
+      location.id,
+      user?.lat ?? location.lat,
+      user?.lng ?? location.lng
+    ),
+    [location.id, location.lat, location.lng, user?.lat, user?.lng]
+  )
 
   useEffect(() => {
     if (!preferences.channels[channel]) {
@@ -179,8 +188,8 @@ export default function PersonalizedAlertsScreen() {
   )
 
   const farmerAdvisory = useMemo(() => {
-    return getPersonalizedAdvisory(activeSubscriber, preferences.language)
-  }, [activeSubscriber, preferences.language])
+    return getPersonalizedAdvisory(activeSubscriber, preferences.language, heatSnapshot.data)
+  }, [activeSubscriber, preferences.language, heatSnapshot.data])
 
   const [isLiveSynthesizing, setIsLiveSynthesizing] = useState(false)
   const [liveAdvisoryData, setLiveAdvisoryData] = useState<LiveSynthesisResponse | null>(null)

@@ -69,9 +69,12 @@ export function computeSpeechDuration(text: string): number {
   return Math.max(Math.ceil(Math.max(fromWords, fromChars)), 20)
 }
 
+import type { HeatSnapshot } from "./types"
+
 export function getPersonalizedAdvisory(
   farmer: FarmerProfile,
-  langCode: string = "EN"
+  langCode: string = "EN",
+  liveHeatSnapshot?: HeatSnapshot | null
 ): FarmerAdvisory {
   const normLang = (langCode || "EN").toUpperCase()
   const name = farmer.name || "Farmer"
@@ -248,6 +251,27 @@ export function getPersonalizedAdvisory(
     sprayDirective = "Avoid chemical spraying during high daytime temperatures"
   }
 
+  // 1.1 Override microclimate & heat metrics with live snapshot if provided
+  if (liveHeatSnapshot) {
+    wbgt = Number(liveHeatSnapshot.wbgt.toFixed(1))
+    psi = liveHeatSnapshot.psi
+    riskLevel = liveHeatSnapshot.severity === "safe" ? "caution" : liveHeatSnapshot.severity
+    if (liveHeatSnapshot.temperature) ambientTemp = Number(liveHeatSnapshot.temperature.toFixed(1))
+    if (liveHeatSnapshot.humidity) humidity = Math.round(liveHeatSnapshot.humidity)
+    if (liveHeatSnapshot.safeWindow) {
+      const w = liveHeatSnapshot.safeWindow
+      safeWindow = `${w.from} – ${w.to}${w.wrapsMidnight ? " (+1)" : ""}`
+    }
+    if (liveHeatSnapshot.ndvi) ndvi = Number(liveHeatSnapshot.ndvi.toFixed(2))
+    if (liveHeatSnapshot.severity === "red") {
+      haltHours = "11:30 AM – 3:30 PM"
+    } else if (liveHeatSnapshot.severity === "caution") {
+      haltHours = "12:00 PM – 3:00 PM"
+    } else {
+      haltHours = "None"
+    }
+  }
+
   // 2. Synthesize clear, unambiguous agromet advisory in target language
   if (normLang === "HI") {
     const cropLocal = cropEn.includes("Wheat") ? "गेहूं" : cropEn.includes("Grapes") ? "अंगूर व प्याज" : cropEn.includes("Soybean") ? "सोयाबीन व तूर" : cropEn.includes("Bajra") ? "बाजरा व सरसों" : cropEn.includes("Cotton") ? "कपास व मक्का" : cropEn
@@ -370,7 +394,7 @@ export function getPersonalizedAdvisory(
     const cropLocal = cropEn.includes("Wheat") ? "గోధుమ" : cropEn.includes("Grapes") ? "ద్రాక్ష" : cropEn.includes("Soybean") ? "సోయాబీన్" : cropEn.includes("Cotton") ? "పత్తి" : cropEn
     const spokenText = `నమస్కారం ${name} గారు. ${village}, ${district} కిసాన్‌గార్డ్ వ్యవసాయ సలహా. వెట్-బల్బ్ ఉష్ణోగ్రత ${wbgt} డిగ్రీలు మరియు PSI ${psi}/100 ఉంది. ఉదయం ${haltHours} వరకు పనులు నిలిపివేయండి. ${cropLocal} పంటకు ${yieldLossRisk} దిగుబడి నష్టం రాకుండా ${soilEn} నేల కోసం సాయంత్రం ${waterDeficitMm} ${irrigationEn} ద్వారా నీటి తడి అందించండి. నష్టం ${mitigatedYieldLoss} కి తగ్గుతుంది.`
     const displayBody = `🌿 [కిసాన్‌గార్డ్ వ్యవసాయ సలహా - ${name}]\nప్రాంతం: ${village}, ${district} | పంట: ${cropLocal}\n• మోడల్ 1: WBGT ${wbgt}°C | PSI ${psi}/100 | పని నిలిపివేత: ${haltHours}\n• మోడల్ 2: CDHI ${cdhi}/100 | NDVI ${ndvi}\n• మోడల్ 3: ${soilEn} | లోటు ${waterDeficitMm} | సాయంత్రం ${irrigationEn}\n• మోడల్ 4: దిగుబడి నష్టం ${yieldLossRisk} -> సాయంత్రం తడితో ${mitigatedYieldLoss}`
-    const whatsappText = `🌿 *KisanGuard అగ్రోమెట్ వాయిస్ అలర్ట్*\nరైతు: ${name} (${village}, ${district})\nపంట: ${cropLocal}\n\nనమస్కారం ${name} గారు! WBGT ${wbgt}°C. ${haltHours} పనులు ఆపండి మరియు సాయంత్రం ${waterDeficitMm} నీరందించండి.`
+    const whatsappText = `🌿 *KisanGuard అగ్రోమెట్ వాయిస్ అలర్ట్*\nరైతు: ${name} (${village}, ${district})\nపంట: ${cropLocal}\n\nనమస్కారం ${name} గారు! WBGT ${wbgt}°C. ${haltHours} పనులు ఆపండి এবং సాయంత్రం ${waterDeficitMm} నీరందించండి.`
     return {
       farmerName: name,
       village,

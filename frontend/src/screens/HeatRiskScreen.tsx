@@ -121,7 +121,13 @@ export default function HeatRiskScreen() {
                 </div>
                 <SeverityBadge
                   severity={data.severity}
-                  label={`${t(`common.${data.severity}` as const)} ${t("heatRisk.severityBadgeLabel")}`}
+                  label={
+                    data.severity === "red"
+                      ? t("heatRisk.badgeRed")
+                      : data.severity === "caution"
+                      ? t("heatRisk.badgeCaution")
+                      : t("heatRisk.badgeSafe")
+                  }
                 />
                 <ProgressBar
                   value={Math.min(100, (data.wbgt / 40) * 100)}
