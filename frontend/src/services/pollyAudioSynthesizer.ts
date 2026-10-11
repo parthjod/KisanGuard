@@ -11,6 +11,22 @@ export interface SpeechPlaybackState {
 
 export type PlaybackCallback = (state: SpeechPlaybackState) => void
 
+export function estimateSpeechDuration(text: string, rate: number = 0.93): number {
+  if (!text || !text.trim()) return 18
+  const words = text.trim().split(/\s+/).filter(Boolean).length
+  // Indian agromet speech cadence: ~2.1-2.3 words/sec adjusted for deliberate rate
+  const estFromWords = words / (2.2 * (rate || 0.93))
+  const estFromChars = text.trim().length / (13.0 * (rate || 0.93))
+  return Math.max(Math.ceil(Math.max(estFromWords, estFromChars)), 14)
+}
+
+export function formatAudioTime(seconds: number): string {
+  const safeSec = Math.max(0, Math.floor(seconds || 0))
+  const m = Math.floor(safeSec / 60)
+  const s = safeSec % 60
+  return `${m}:${s.toString().padStart(2, "0")}`
+}
+
 class PollySynthesizerService {
   private currentUtterance: SpeechSynthesisUtterance | null = null
   private fallbackAudio: HTMLAudioElement | null = null
@@ -49,7 +65,9 @@ class PollySynthesizerService {
     onUpdate: PlaybackCallback
   ) {
     this.stop(onUpdate)
-    this.estimatedDuration = durationSeconds || 18
+    // Compute exact dynamic duration from text to avoid hardcoded mismatch
+    const calculatedDuration = estimateSpeechDuration(text, 0.93)
+    this.estimatedDuration = Math.max(durationSeconds || 0, calculatedDuration)
 
     const hasSpeechSynthesis =
       typeof window !== "undefined" &&
@@ -86,29 +104,38 @@ class PollySynthesizerService {
         // Track progress with interval
         this.timer = setInterval(() => {
           const elapsed = (Date.now() - this.startTime) / 1000
-          const progress = Math.min((elapsed / this.estimatedDuration) * 100, 99)
+          // Dynamically expand estimatedDuration if voice continues beyond estimate, ensuring currentTime <= duration always
+          if (elapsed >= this.estimatedDuration) {
+            this.estimatedDuration = Math.ceil(elapsed + 1)
+          }
+          const displayTime = Math.min(elapsed, this.estimatedDuration)
+          const progress = Math.min((displayTime / this.estimatedDuration) * 100, 99)
           onUpdate({
             isPlaying: true,
             progress,
-            currentTime: elapsed,
+            currentTime: displayTime,
             duration: this.estimatedDuration,
           })
         }, 150)
 
         utterance.onend = () => {
           if (this.timer) clearInterval(this.timer)
+          const finalDuration = Math.max(
+            Math.ceil((Date.now() - this.startTime) / 1000),
+            this.estimatedDuration
+          )
           onUpdate({
             isPlaying: false,
             progress: 100,
-            currentTime: this.estimatedDuration,
-            duration: this.estimatedDuration,
+            currentTime: finalDuration,
+            duration: finalDuration,
           })
           setTimeout(() => {
             onUpdate({
               isPlaying: false,
               progress: 0,
               currentTime: 0,
-              duration: this.estimatedDuration,
+              duration: finalDuration,
             })
           }, 400)
         }

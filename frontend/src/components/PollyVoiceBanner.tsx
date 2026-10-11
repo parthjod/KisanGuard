@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react"
 import { Volume2, VolumeX, Play, Square, Share2, Check, ExternalLink } from "lucide-react"
 import { LANGUAGES } from "../services/mockData"
-import { pollySynthesizer } from "../services/pollyAudioSynthesizer"
+import { pollySynthesizer, estimateSpeechDuration, formatAudioTime } from "../services/pollyAudioSynthesizer"
 
 interface PollyVoiceBannerProps {
   language?: string
@@ -10,6 +10,15 @@ interface PollyVoiceBannerProps {
   advisoryText?: string
   compact?: boolean
   className?: string
+}
+
+const REGIONAL_VOICES: Record<string, { voiceName: string; langLabel: string }> = {
+  HI: { voiceName: "Aditi Neural", langLabel: "हिन्दी" },
+  MR: { voiceName: "Aarohi Neural", langLabel: "मराठी" },
+  PA: { voiceName: "Gurpreet Neural", langLabel: "ਪੰਜਾਬੀ" },
+  TE: { voiceName: "Chitra Neural", langLabel: "తెలుగు" },
+  BN: { voiceName: "Basab Neural", langLabel: "বাংলা" },
+  EN: { voiceName: "Kajal Neural", langLabel: "English (India)" },
 }
 
 export function PollyVoiceBanner({
@@ -22,7 +31,10 @@ export function PollyVoiceBanner({
 }: PollyVoiceBannerProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(18)
+  const initialDuration = estimateSpeechDuration(
+    advisoryText || `Namaste. KisanGuard agromet advisory for ${locationName}. Moderate heat risk. Avoid midday field labor and hydrate workers.`
+  )
+  const [duration, setDuration] = useState(initialDuration)
   const [activeLang, setActiveLang] = useState(language.toUpperCase())
   const [copiedLink, setCopiedLink] = useState(false)
 
@@ -35,6 +47,14 @@ export function PollyVoiceBanner({
   useEffect(() => {
     setActiveLang(language.toUpperCase())
   }, [language])
+
+  // Recalculate duration whenever advisoryText changes
+  useEffect(() => {
+    if (advisoryText) {
+      const d = estimateSpeechDuration(advisoryText)
+      setDuration(d)
+    }
+  }, [advisoryText])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -204,9 +224,10 @@ export function PollyVoiceBanner({
                 key={code}
                 type="button"
                 onClick={() => {
-                  if (isPlaying && audioRef.current) {
-                    audioRef.current.pause()
+                  if (isPlaying) {
+                    pollySynthesizer.stop()
                     setIsPlaying(false)
+                    setCurrentTime(0)
                   }
                   setActiveLang(code)
                 }}
@@ -247,17 +268,17 @@ export function PollyVoiceBanner({
 
       {/* Progress track when playing */}
       <div className="mt-3 pt-2.5 border-t border-emerald-800/40 flex items-center gap-3 text-[11px] text-stone-300 font-mono">
-        <span className="text-emerald-400 font-bold">
-          0:{Math.floor(currentTime).toString().padStart(2, "0")} / 0:{Math.floor(duration).toString().padStart(2, "0")}
+        <span className="text-emerald-400 font-bold min-w-[75px]">
+          {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
         </span>
         <div className="flex-1 bg-stone-800 rounded-full h-1.5 overflow-hidden">
           <div
             className="bg-emerald-400 h-full transition-all duration-150"
-            style={{ width: `${(currentTime / duration) * 100}%` }}
+            style={{ width: `${Math.min(100, Math.max(0, (currentTime / (duration || 1)) * 100))}%` }}
           />
         </div>
-        <span className="text-stone-400 text-[10px]">
-          {activeLang === "EN" ? "Voice: Kajal Neural" : "Voice: Aditi Neural"}
+        <span className="text-emerald-300 text-[10px] font-semibold tracking-wide">
+          Voice: {REGIONAL_VOICES[activeLang]?.voiceName || "Aditi Neural"}
         </span>
       </div>
     </div>

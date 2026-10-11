@@ -31,7 +31,24 @@ interface FarmerProfile {
   preferredLanguage?: string
 }
 
+export function computeSpeechDuration(text: string): number {
+  if (!text) return 18
+  const words = text.trim().split(/\s+/).filter(Boolean).length
+  const fromWords = words / (2.2 * 0.93)
+  const fromChars = text.trim().length / (13.0 * 0.93)
+  return Math.max(Math.ceil(Math.max(fromWords, fromChars)), 14)
+}
+
 export function getPersonalizedAdvisory(
+  farmer: FarmerProfile,
+  langCode: string = "EN"
+): FarmerAdvisory {
+  const advisory = buildRawAdvisory(farmer, langCode)
+  advisory.suggestedDuration = computeSpeechDuration(advisory.spokenText)
+  return advisory
+}
+
+function buildRawAdvisory(
   farmer: FarmerProfile,
   langCode: string = "EN"
 ): FarmerAdvisory {

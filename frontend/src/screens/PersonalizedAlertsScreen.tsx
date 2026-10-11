@@ -47,7 +47,7 @@ import {
   preferenceService,
 } from "../services/preferenceService"
 import { getPersonalizedAdvisory } from "../services/farmerAdvisoryEngine"
-import { pollySynthesizer } from "../services/pollyAudioSynthesizer"
+import { pollySynthesizer, formatAudioTime } from "../services/pollyAudioSynthesizer"
 import { relativeTime } from "../services/random"
 import { useAppState } from "../state/AppState"
 import { useAuth, DEMO_FARMERS, FarmerUser } from "../state/AuthState"
@@ -221,8 +221,17 @@ export default function PersonalizedAlertsScreen() {
 
   const [isPlayingPolly, setIsPlayingPolly] = useState(false)
   const [pollyProgress, setPollyProgress] = useState(0)
-  const [pollyDuration, setPollyDuration] = useState(18)
+  const [pollyDuration, setPollyDuration] = useState(farmerAdvisory?.suggestedDuration || 20)
   const [pollyCurrentTime, setPollyCurrentTime] = useState(0)
+  const [scheduleCadence, setScheduleCadence] = useState<"1h" | "2h" | "dynamic">("1h")
+  const [automatedPushActive, setAutomatedPushActive] = useState(true)
+
+  // Synchronize duration when farmer or language changes
+  useEffect(() => {
+    if (farmerAdvisory?.suggestedDuration) {
+      setPollyDuration(farmerAdvisory.suggestedDuration)
+    }
+  }, [farmerAdvisory])
 
   // Cleanup speech synthesis on unmount
   useEffect(() => {
@@ -249,7 +258,7 @@ export default function PersonalizedAlertsScreen() {
         setIsPlayingPolly(state.isPlaying)
         setPollyProgress(state.progress)
         setPollyCurrentTime(state.currentTime)
-        setPollyDuration(state.duration)
+        if (state.duration) setPollyDuration(state.duration)
       }
     )
   }
@@ -273,12 +282,16 @@ export default function PersonalizedAlertsScreen() {
   function handleSendWhatsAppDirect() {
     const cleanPhone = phoneNumber.replace(/[^0-9]/g, "")
     const audioUrl = `https://d2wnlort4mta2e.cloudfront.net/audio/advisory_${(preferences.language || "hi").toLowerCase()}.mp3`
+    const effectiveSecs = Math.round(pollyDuration || farmerAdvisory.suggestedDuration)
     const textToSend = encodeURIComponent(
       `${farmerAdvisory.whatsappText}\n\n` +
-      `🔊 *Listen to Amazon Polly Voice Note (${Math.round(farmerAdvisory.suggestedDuration)}s):*\n${audioUrl}\n\n` +
+      `🔊 *Listen to Amazon Polly Voice Note (${formatAudioTime(effectiveSecs)}):*\n${audioUrl}\n\n` +
       `_Dispatched via KisanGuard Climate & Crop Intelligence_`
     )
-    const url = cleanPhone
+    // Avoid "Phone number not found" error on WhatsApp Web:
+    // If the recipient is the mock dummy number (9421098765 / 9876543210), omit phone to open clean contact selector
+    const isCustomRealPhone = cleanPhone.length >= 10 && !cleanPhone.includes("9421098765") && !cleanPhone.includes("9876543210")
+    const url = isCustomRealPhone
       ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${textToSend}`
       : `https://api.whatsapp.com/send?text=${textToSend}`
     window.open(url, "_blank")
@@ -556,8 +569,8 @@ export default function PersonalizedAlertsScreen() {
                                 <span>Amazon Polly &middot; {farmerAdvisory.farmerName}</span>
                                 <span>
                                   {isPlayingPolly
-                                    ? `0:${Math.floor(pollyCurrentTime).toString().padStart(2, "0")} / 0:${Math.round(pollyDuration || farmerAdvisory.suggestedDuration)}`
-                                    : `0:${Math.round(farmerAdvisory.suggestedDuration)}`}
+                                    ? `${formatAudioTime(pollyCurrentTime)} / ${formatAudioTime(pollyDuration || farmerAdvisory.suggestedDuration)}`
+                                    : formatAudioTime(pollyDuration || farmerAdvisory.suggestedDuration)}
                                 </span>
                               </div>
                               {/* Waveform graphic */}
@@ -708,8 +721,8 @@ export default function PersonalizedAlertsScreen() {
                             </span>
                             <span className="font-mono text-[11px] text-emerald-800 font-bold">
                               {isPlayingPolly
-                                ? `0:${Math.floor(pollyCurrentTime).toString().padStart(2, "0")} / 0:${Math.round(pollyDuration || farmerAdvisory.suggestedDuration).toString().padStart(2, "0")}`
-                                : `0:00 / 0:${Math.round(farmerAdvisory.suggestedDuration)}`}
+                                ? `${formatAudioTime(pollyCurrentTime)} / ${formatAudioTime(pollyDuration || farmerAdvisory.suggestedDuration)}`
+                                : `0:00 / ${formatAudioTime(pollyDuration || farmerAdvisory.suggestedDuration)}`}
                             </span>
                           </div>
 
@@ -741,6 +754,70 @@ export default function PersonalizedAlertsScreen() {
                         <p className="italic leading-relaxed text-stone-800">
                           &ldquo;{farmerAdvisory.spokenText}&rdquo;
                         </p>
+                      </div>
+                    </div>
+
+                    {/* Automated Cadence Intelligence System */}
+                    <div className="p-3.5 bg-gradient-to-r from-emerald-950 via-stone-900 to-emerald-950 text-white rounded-xl border border-emerald-700/60 shadow-xs space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-300">
+                          <Clock size={14} className="text-emerald-400" />
+                          <span>Automated WhatsApp Cadence</span>
+                        </div>
+                        <span className="text-[10px] font-mono bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded font-bold border border-emerald-600/50">
+                          AWS EventBridge
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-300 leading-relaxed">
+                        Automatic server push to farmer&apos;s WhatsApp with voice notes every 1 or 2 hours. No manual forwarding required.
+                      </p>
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCadence("1h")}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition text-center cursor-pointer ${
+                            scheduleCadence === "1h"
+                              ? "bg-emerald-500 text-stone-950 shadow-xs"
+                              : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                          }`}
+                        >
+                          Every 1 Hour
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCadence("2h")}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition text-center cursor-pointer ${
+                            scheduleCadence === "2h"
+                              ? "bg-emerald-500 text-stone-950 shadow-xs"
+                              : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                          }`}
+                        >
+                          Every 2 Hours
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleCadence("dynamic")}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition text-center cursor-pointer ${
+                            scheduleCadence === "dynamic"
+                              ? "bg-emerald-500 text-stone-950 shadow-xs"
+                              : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                          }`}
+                        >
+                          WBGT Threshold
+                        </button>
+                      </div>
+                      <div className="pt-2 border-t border-emerald-800/60 flex items-center justify-between text-[11px]">
+                        <span className="text-emerald-300 font-mono text-[10px]">
+                          Cron: {scheduleCadence === "1h" ? "cron(0 * * * ? *)" : scheduleCadence === "2h" ? "cron(0 */2 * * ? *)" : "Telemetry > 29.5°C"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleDispatchAlert}
+                          disabled={sendingAlert}
+                          className="bg-emerald-400 hover:bg-emerald-300 text-stone-950 text-[11px] font-bold px-2.5 py-1 rounded-lg transition shadow-xs flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                        >
+                          {sendingAlert ? <span>Pushing...</span> : <span>⚡ Test Auto-Push</span>}
+                        </button>
                       </div>
                     </div>
 
